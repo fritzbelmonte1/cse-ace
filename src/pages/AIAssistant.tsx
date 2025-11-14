@@ -1,11 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowLeft, Send, Loader2, BookOpen } from "lucide-react";
+import { ArrowLeft, Send, BookOpen, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { ChatMessage } from "@/components/ChatMessage";
+import { TypingIndicator } from "@/components/TypingIndicator";
 
 interface Message {
   role: "user" | "assistant";
@@ -18,16 +21,108 @@ const AIAssistant = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Load or create conversation on mount
+  useEffect(() => {
+    const initConversation = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Try to get the most recent conversation
+        const { data: conversations } = await supabase
+          .from('chat_conversations')
+          .select('id')
+          .eq('user_id', user.id)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+
+        if (conversations && conversations.length > 0) {
+          const convId = conversations[0].id;
+          setConversationId(convId);
+
+          // Load message history
+          const { data: messageHistory } = await supabase
+            .from('chat_messages')
+            .select('*')
+            .eq('conversation_id', convId)
+            .order('created_at', { ascending: true });
+
+          if (messageHistory) {
+            setMessages(messageHistory.map(msg => ({
+              role: msg.role as "user" | "assistant",
+              content: msg.content,
+              sources: msg.sources ? (Array.isArray(msg.sources) ? msg.sources : []) : undefined
+            })));
+          }
+        } else {
+          // Create new conversation
+          const { data: newConv } = await supabase
+            .from('chat_conversations')
+            .insert({ user_id: user.id })
+            .select()
+            .single();
+
+          if (newConv) {
+            setConversationId(newConv.id);
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing conversation:', error);
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    };
+
+    initConversation();
+  }, []);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
+
+  const saveMessage = async (role: "user" | "assistant", content: string, sources?: any[]) => {
+    if (!conversationId) return;
+
+    try {
+      await supabase
+        .from('chat_messages')
+        .insert({
+          conversation_id: conversationId,
+          role,
+          content,
+          sources: sources || null
+        });
+
+      // Update conversation's updated_at
+      await supabase
+        .from('chat_conversations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', conversationId);
+    } catch (error) {
+      console.error('Error saving message:', error);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!input.trim()) return;
+    if (!input.trim() || !conversationId) return;
 
     const userMessage = input.trim();
     setInput("");
-    setMessages(prev => [...prev, { role: "user", content: userMessage }]);
+    
+    const newUserMessage = { role: "user" as const, content: userMessage };
+    setMessages(prev => [...prev, newUserMessage]);
     setLoading(true);
+
+    // Save user message
+    await saveMessage("user", userMessage);
 
     try {
       const response = await fetch(
@@ -48,22 +143,44 @@ const AIAssistant = () => {
         throw new Error(result.error || 'Query failed');
       }
 
-      setMessages(prev => [...prev, {
-        role: "assistant",
+      const assistantMessage = {
+        role: "assistant" as const,
         content: result.answer,
         sources: result.sources
-      }]);
+      };
+
+      setMessages(prev => [...prev, assistantMessage]);
+      
+      // Save assistant message
+      await saveMessage("assistant", result.answer, result.sources);
+      
+      toast.success("Answer received!");
     } catch (error: any) {
       console.error('Query error:', error);
       toast.error(error.message || "Failed to get answer");
-      setMessages(prev => [...prev, {
-        role: "assistant",
+      
+      const errorMessage = {
+        role: "assistant" as const,
         content: "Sorry, I encountered an error. Please try again."
-      }]);
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
+      await saveMessage("assistant", errorMessage.content);
     } finally {
       setLoading(false);
     }
   };
+
+  if (isLoadingHistory) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-background via-background to-muted">
+        <div className="text-center">
+          <Sparkles className="h-8 w-8 animate-spin text-primary mx-auto mb-2" />
+          <p className="text-sm text-muted-foreground">Loading conversation...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-background via-background to-muted">
@@ -129,39 +246,36 @@ const AIAssistant = () => {
                   </Card>
                 </div>
               ))}
-              {loading && (
-                <div className="flex justify-start">
-                  <Card className="max-w-[80%]">
-                    <CardContent className="p-4 flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm">Thinking...</span>
-                    </CardContent>
-                  </Card>
-                </div>
-              )}
+              {loading && <TypingIndicator />}
+              <div ref={messagesEndRef} />
             </div>
           )}
         </ScrollArea>
       </div>
 
-      <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      {/* Input Area */}
+      <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-lg">
         <div className="container max-w-4xl mx-auto px-4 py-4">
-          <form onSubmit={handleSubmit} className="flex gap-2">
+          <form onSubmit={handleSubmit} className="flex gap-3">
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask a question about CSE materials..."
               disabled={loading}
-              className="flex-1"
+              className="flex-1 h-12 text-base shadow-sm"
             />
-            <Button type="submit" disabled={loading || !input.trim()}>
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
+            <Button 
+              type="submit" 
+              disabled={loading || !input.trim()}
+              size="lg"
+              className="px-6 shadow-sm"
+            >
+              <Send className="h-4 w-4" />
             </Button>
           </form>
+          <p className="text-xs text-muted-foreground text-center mt-2">
+            AI responses are based on uploaded study materials
+          </p>
         </div>
       </div>
     </div>
