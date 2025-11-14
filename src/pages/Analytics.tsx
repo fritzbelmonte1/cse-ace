@@ -3,9 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, TrendingUp, Target, Clock, Award } from "lucide-react";
+import { ArrowLeft, TrendingUp, Target, Clock, Award, Sparkles, Loader2 } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from "sonner";
 
 interface PracticeSession {
   id: string;
@@ -21,10 +22,44 @@ const Analytics = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [sessions, setSessions] = useState<PracticeSession[]>([]);
+  const [recommendations, setRecommendations] = useState<string>("");
+  const [loadingRecommendations, setLoadingRecommendations] = useState(false);
 
   useEffect(() => {
     loadAnalytics();
   }, []);
+
+  const loadAIRecommendations = async () => {
+    setLoadingRecommendations(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-study-recommendations`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate recommendations');
+      }
+
+      const data = await response.json();
+      setRecommendations(data.recommendations);
+    } catch (error) {
+      console.error('Error loading recommendations:', error);
+      toast.error(error instanceof Error ? error.message : "Failed to load AI recommendations");
+    } finally {
+      setLoadingRecommendations(false);
+    }
+  };
 
   const loadAnalytics = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -207,6 +242,53 @@ const Analytics = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* AI Recommendations Card */}
+        <Card className="mb-8">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-primary" />
+                <CardTitle>AI Study Recommendations</CardTitle>
+              </div>
+              <Button 
+                onClick={loadAIRecommendations}
+                disabled={loadingRecommendations}
+                size="sm"
+              >
+                {loadingRecommendations ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Generate Plan
+                  </>
+                )}
+              </Button>
+            </div>
+            <CardDescription>
+              Get personalized study recommendations based on your performance
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {recommendations ? (
+              <div className="prose prose-sm max-w-none dark:prose-invert">
+                <div className="whitespace-pre-wrap bg-muted/50 p-6 rounded-lg">
+                  {recommendations}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <Sparkles className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Click "Generate Plan" to get AI-powered study recommendations</p>
+                <p className="text-sm mt-2">Based on your performance data and weak areas</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Detailed Analytics Tabs */}
         <Tabs defaultValue="trends" className="space-y-4">
