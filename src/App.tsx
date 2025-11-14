@@ -10,6 +10,7 @@ import Results from "./pages/Results";
 import AdminUpload from "./pages/AdminUpload";
 import Auth from "./pages/Auth";
 import AIAssistant from "./pages/AIAssistant";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
@@ -28,6 +29,7 @@ const App = () => (
           <Route path="/practice/:moduleId" element={<ProtectedRoute><Practice /></ProtectedRoute>} />
           <Route path="/results/:moduleId" element={<ProtectedRoute><Results /></ProtectedRoute>} />
           <Route path="/ai-assistant" element={<ProtectedRoute><AIAssistant /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route 
             path="/admin/upload" 
             element={
