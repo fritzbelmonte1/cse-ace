@@ -14,6 +14,7 @@ import Profile from "./pages/Profile";
 import Analytics from "./pages/Analytics";
 import Goals from "./pages/Goals";
 import Flashcards from "./pages/Flashcards";
+import BrowseDecks from "./pages/BrowseDecks";
 import NotFound from "./pages/NotFound";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
@@ -44,6 +45,7 @@ const App = () => (
             } 
           />
             <Route path="/flashcards" element={<ProtectedRoute><Flashcards /></ProtectedRoute>} />
+            <Route path="/browse-decks" element={<ProtectedRoute><BrowseDecks /></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
