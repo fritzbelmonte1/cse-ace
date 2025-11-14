@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, LogOut, Shield, Brain, TrendingUp, MessageSquare, User, BarChart, Target, Layers } from "lucide-react";
+import { BookOpen, LogOut, Shield, Brain, TrendingUp, MessageSquare, User, BarChart, Target, Layers, Users } from "lucide-react";
 import { toast } from "sonner";
 
 const modules = [
@@ -143,8 +143,18 @@ const Dashboard = () => {
               </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <Button className="w-full">Study Flashcards</Button>
+          <CardContent className="space-y-2">
+            <Button className="w-full" onClick={(e) => { e.stopPropagation(); navigate("/flashcards"); }}>
+              Study Flashcards
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full" 
+              onClick={(e) => { e.stopPropagation(); navigate("/browse-decks"); }}
+            >
+              <Users className="mr-2 h-4 w-4" />
+              Browse Community Decks
+            </Button>
           </CardContent>
         </Card>
       </div>

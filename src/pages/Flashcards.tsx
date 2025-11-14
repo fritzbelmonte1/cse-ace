@@ -8,10 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { ArrowLeft, Plus, Brain, RotateCcw, Trash2, CheckCircle, XCircle, BookOpen, Download } from "lucide-react";
+import { ArrowLeft, Plus, Brain, RotateCcw, Trash2, CheckCircle, XCircle, BookOpen, Download, FolderOpen, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { FlashcardImport } from "@/components/FlashcardImport";
+import { DeckManager } from "@/components/DeckManager";
 
 interface Flashcard {
   id: string;
@@ -85,6 +86,7 @@ const Flashcards = () => {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [deckManagerOpen, setDeckManagerOpen] = useState(false);
   const [studyMode, setStudyMode] = useState(false);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -369,6 +371,14 @@ const Flashcards = () => {
           </Button>
 
           <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate("/browse-decks")}>
+              <Users className="mr-2 h-4 w-4" />
+              Browse Community
+            </Button>
+            <Button variant="outline" onClick={() => setDeckManagerOpen(true)}>
+              <FolderOpen className="mr-2 h-4 w-4" />
+              Manage Decks
+            </Button>
             <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
               <Download className="mr-2 h-4 w-4" />
               Import
@@ -449,6 +459,12 @@ const Flashcards = () => {
           open={importDialogOpen}
           onOpenChange={setImportDialogOpen}
           onSuccess={loadFlashcards}
+        />
+
+        <DeckManager
+          open={deckManagerOpen}
+          onOpenChange={setDeckManagerOpen}
+          onDeckCreated={loadFlashcards}
         />
 
         <div className="mb-8">
