@@ -92,37 +92,57 @@ serve(async (req) => {
 
       console.log(`Sending reminder for ${goal.module} exam to ${userData.user.email}`);
 
-      // Create auth header for the user
-      const { data: { session }, error: sessionError } = await supabaseClient.auth.signInWithPassword({
-        email: userData.user.email,
-        password: 'dummy' // This won't work, we need to use service role
-      });
+      // Send email directly since we can't invoke authenticated functions from service role
+      // We'll use a different approach - call Resend directly
+      try {
+        const Resend = (await import("npm:resend@4.0.0")).Resend;
+        const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
-      // Instead, invoke the function with service role key
-      const { error: notificationError } = await supabaseClient.functions.invoke(
-        "send-goal-notification",
-        {
-          body: {
-            type: "exam_reminder",
-            goalData: {
-              module: goal.module,
-              targetScore: goal.target_score,
-              currentScore,
-              examDate: goal.exam_date,
-              daysUntilExam,
-            },
-          },
-        }
-      );
+        const moduleName = goal.module.charAt(0).toUpperCase() + goal.module.slice(1);
+        const subject = `📅 Exam Reminder: ${moduleName} in ${daysUntilExam} days`;
+        const html = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #3b82f6;">Exam Reminder 📅</h1>
+            <p>Your exam for <strong>${moduleName}</strong> is coming up soon!</p>
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p style="margin: 0;"><strong>Exam Date:</strong> ${goal.exam_date}</p>
+              <p style="margin: 10px 0 0 0;"><strong>Days Until Exam:</strong> ${daysUntilExam}</p>
+              ${currentScore ? `<p style="margin: 10px 0 0 0;"><strong>Current Score:</strong> ${currentScore}%</p>` : ""}
+              <p style="margin: 10px 0 0 0;"><strong>Target Score:</strong> ${goal.target_score}%</p>
+            </div>
+            ${currentScore && currentScore < goal.target_score 
+              ? `<p style="color: #dc2626;">You're currently ${goal.target_score - currentScore}% below your target. Make sure to practice!</p>` 
+              : `<p style="color: #10b981;">You're on track! Keep practicing to maintain your progress.</p>`
+            }
+            <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
+              This is an automated notification from your CSE Prep App.
+            </p>
+          </div>
+        `;
 
-      if (notificationError) {
-        console.error(`Error sending notification for goal ${goal.id}:`, notificationError);
-      } else {
+        await resend.emails.send({
+          from: "CSE Prep <onboarding@resend.dev>",
+          to: [userData.user.email],
+          subject,
+          html,
+        });
+
         notifications.push({
           goalId: goal.id,
           module: goal.module,
           daysUntilExam,
           sent: true,
+        });
+
+        console.log(`Reminder sent successfully to ${userData.user.email}`);
+      } catch (emailError) {
+        console.error(`Error sending email for goal ${goal.id}:`, emailError);
+        notifications.push({
+          goalId: goal.id,
+          module: goal.module,
+          daysUntilExam,
+          sent: false,
+          error: emailError.message,
         });
       }
     }
