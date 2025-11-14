@@ -13,6 +13,7 @@ import AIAssistant from "./pages/AIAssistant";
 import Profile from "./pages/Profile";
 import Analytics from "./pages/Analytics";
 import Goals from "./pages/Goals";
+import Flashcards from "./pages/Flashcards";
 import NotFound from "./pages/NotFound";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
@@ -42,7 +43,8 @@ const App = () => (
               </ProtectedRoute>
             } 
           />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="/flashcards" element={<ProtectedRoute><Flashcards /></ProtectedRoute>} />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
