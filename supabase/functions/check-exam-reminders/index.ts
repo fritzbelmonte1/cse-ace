@@ -95,7 +95,7 @@ serve(async (req) => {
       // Send email directly since we can't invoke authenticated functions from service role
       // We'll use a different approach - call Resend directly
       try {
-        const Resend = (await import("npm:resend@4.0.0")).Resend;
+        const Resend = (await import("https://esm.sh/resend@4.0.0")).Resend;
         const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
         const moduleName = goal.module.charAt(0).toUpperCase() + goal.module.slice(1);
@@ -135,14 +135,14 @@ serve(async (req) => {
         });
 
         console.log(`Reminder sent successfully to ${userData.user.email}`);
-      } catch (emailError) {
+      } catch (emailError: any) {
         console.error(`Error sending email for goal ${goal.id}:`, emailError);
         notifications.push({
           goalId: goal.id,
           module: goal.module,
           daysUntilExam,
           sent: false,
-          error: emailError.message,
+          error: emailError?.message || "Unknown error",
         });
       }
     }

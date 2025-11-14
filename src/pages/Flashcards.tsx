@@ -8,9 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { ArrowLeft, Plus, Brain, RotateCcw, Trash2, CheckCircle, XCircle, BookOpen } from "lucide-react";
+import { ArrowLeft, Plus, Brain, RotateCcw, Trash2, CheckCircle, XCircle, BookOpen, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { FlashcardImport } from "@/components/FlashcardImport";
 
 interface Flashcard {
   id: string;
@@ -83,6 +84,7 @@ const Flashcards = () => {
   const [reviews, setReviews] = useState<Record<string, FlashcardReview>>({});
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [studyMode, setStudyMode] = useState(false);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -366,7 +368,13 @@ const Flashcards = () => {
             Back to Dashboard
           </Button>
 
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+              <Download className="mr-2 h-4 w-4" />
+              Import
+            </Button>
+
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
@@ -434,7 +442,14 @@ const Flashcards = () => {
               </form>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
+
+        <FlashcardImport
+          open={importDialogOpen}
+          onOpenChange={setImportDialogOpen}
+          onSuccess={loadFlashcards}
+        />
 
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Flashcards</h1>
