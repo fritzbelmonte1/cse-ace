@@ -17,6 +17,7 @@ const Practice = () => {
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [answers, setAnswers] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
+  const [startTime] = useState(Date.now());
 
   useEffect(() => {
     const fetchQuestions = async () => {
@@ -83,11 +84,14 @@ const Practice = () => {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user) {
+        const timeSpentSeconds = Math.floor((Date.now() - startTime) / 1000);
+        
         await supabase.from('practice_sessions').insert({
           user_id: user.id,
           module: moduleId!,
           score,
           total_questions: questions.length,
+          time_spent_seconds: timeSpentSeconds,
         });
 
         // Check for new achievements
