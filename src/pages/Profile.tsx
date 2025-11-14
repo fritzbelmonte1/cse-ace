@@ -14,9 +14,12 @@ import {
   MessageSquare, 
   Award,
   BarChart3,
-  Calendar
+  Calendar,
+  Trophy
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { AchievementBadge } from "@/components/AchievementBadge";
+import { useAchievements } from "@/hooks/useAchievements";
 
 interface PracticeSession {
   id: string;
@@ -33,6 +36,8 @@ interface Stats {
   totalConversations: number;
   totalMessages: number;
   recentSessions: PracticeSession[];
+  achievements: any[];
+  earnedAchievements: any[];
 }
 
 const Profile = () => {
@@ -45,8 +50,11 @@ const Profile = () => {
     bestScore: 0,
     totalConversations: 0,
     totalMessages: 0,
-    recentSessions: []
+    recentSessions: [],
+    achievements: [],
+    earnedAchievements: []
   });
+  const { checkAchievements } = useAchievements();
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -93,6 +101,17 @@ const Profile = () => {
           if (!msgError) messageCount = msgCount || 0;
         }
 
+        // Fetch achievements
+        const { data: allAchievements } = await supabase
+          .from('achievements')
+          .select('*')
+          .order('category', { ascending: true });
+
+        const { data: earnedAchievements } = await supabase
+          .from('user_achievements')
+          .select('*, achievements(*)')
+          .eq('user_id', user.id);
+
         // Calculate statistics
         const totalSessions = sessions?.length || 0;
         const averageScore = totalSessions > 0
@@ -108,7 +127,9 @@ const Profile = () => {
           bestScore,
           totalConversations: convCount || 0,
           totalMessages: messageCount,
-          recentSessions: sessions?.slice(0, 10) || []
+          recentSessions: sessions?.slice(0, 10) || [],
+          achievements: allAchievements || [],
+          earnedAchievements: earnedAchievements || []
         });
       } catch (error) {
         console.error('Error loading profile:', error);
@@ -280,10 +301,14 @@ const Profile = () => {
 
         {/* Detailed Stats */}
         <Tabs defaultValue="performance" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsList className="grid w-full grid-cols-3 max-w-2xl">
             <TabsTrigger value="performance">
               <BarChart3 className="h-4 w-4 mr-2" />
               Performance
+            </TabsTrigger>
+            <TabsTrigger value="achievements">
+              <Trophy className="h-4 w-4 mr-2" />
+              Achievements
             </TabsTrigger>
             <TabsTrigger value="history">
               <Calendar className="h-4 w-4 mr-2" />
@@ -337,6 +362,105 @@ const Profile = () => {
                     <p className="text-muted-foreground">No practice data yet</p>
                     <p className="text-sm text-muted-foreground/70 mt-1">
                       Start practicing to see your progress here
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="achievements" className="space-y-6">
+            <Card className="border-primary/20">
+              <CardHeader>
+                <CardTitle>Your Achievements</CardTitle>
+                <CardDescription>
+                  {stats.earnedAchievements.length} of {stats.achievements.length} unlocked
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {stats.achievements.length > 0 ? (
+                  <div className="space-y-8">
+                    {/* Practice Achievements */}
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                        <BookOpen className="h-5 w-5 text-blue-500" />
+                        Practice Milestones
+                      </h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                        {stats.achievements
+                          .filter((a: any) => a.category === 'practice')
+                          .map((achievement: any) => {
+                            const earned = stats.earnedAchievements.find(
+                              (e: any) => e.achievement_id === achievement.id
+                            );
+                            return (
+                              <AchievementBadge
+                                key={achievement.id}
+                                achievement={achievement}
+                                earned={!!earned}
+                                earnedAt={earned?.earned_at}
+                              />
+                            );
+                          })}
+                      </div>
+                    </div>
+
+                    {/* Performance Achievements */}
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                        <TrendingUp className="h-5 w-5 text-amber-500" />
+                        Performance Excellence
+                      </h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                        {stats.achievements
+                          .filter((a: any) => a.category === 'performance')
+                          .map((achievement: any) => {
+                            const earned = stats.earnedAchievements.find(
+                              (e: any) => e.achievement_id === achievement.id
+                            );
+                            return (
+                              <AchievementBadge
+                                key={achievement.id}
+                                achievement={achievement}
+                                earned={!!earned}
+                                earnedAt={earned?.earned_at}
+                              />
+                            );
+                          })}
+                      </div>
+                    </div>
+
+                    {/* AI Achievements */}
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                        <MessageSquare className="h-5 w-5 text-purple-500" />
+                        AI Assistant Usage
+                      </h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                        {stats.achievements
+                          .filter((a: any) => a.category === 'ai')
+                          .map((achievement: any) => {
+                            const earned = stats.earnedAchievements.find(
+                              (e: any) => e.achievement_id === achievement.id
+                            );
+                            return (
+                              <AchievementBadge
+                                key={achievement.id}
+                                achievement={achievement}
+                                earned={!!earned}
+                                earnedAt={earned?.earned_at}
+                              />
+                            );
+                          })}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <Trophy className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                    <p className="text-muted-foreground">No achievements yet</p>
+                    <p className="text-sm text-muted-foreground/70 mt-1">
+                      Start practicing to unlock achievements
                     </p>
                   </div>
                 )}

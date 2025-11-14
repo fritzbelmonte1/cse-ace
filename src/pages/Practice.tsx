@@ -89,6 +89,25 @@ const Practice = () => {
           score,
           total_questions: questions.length,
         });
+
+        // Check for new achievements
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-achievements`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+              }
+            );
+          }
+        } catch (error) {
+          console.error('Error checking achievements:', error);
+        }
       }
 
       navigate(`/results/${moduleId}`, {

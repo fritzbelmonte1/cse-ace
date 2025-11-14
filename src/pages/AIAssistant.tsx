@@ -130,6 +130,27 @@ const AIAssistant = () => {
         .from('chat_conversations')
         .update({ updated_at: new Date().toISOString() })
         .eq('id', conversationId);
+
+      // Check achievements after sending a message
+      if (role === 'user') {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-achievements`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+              }
+            ).catch(err => console.error('Error checking achievements:', err));
+          }
+        } catch (error) {
+          console.error('Error checking achievements:', error);
+        }
+      }
     } catch (error) {
       console.error('Error saving message:', error);
     }
