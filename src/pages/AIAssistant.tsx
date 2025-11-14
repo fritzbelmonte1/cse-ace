@@ -4,11 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { ArrowLeft, Send, BookOpen, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { ChatMessage } from "@/components/ChatMessage";
 import { TypingIndicator } from "@/components/TypingIndicator";
+import { ConversationSidebar } from "@/components/ConversationSidebar";
 
 interface Message {
   role: "user" | "assistant";
@@ -42,34 +44,9 @@ const AIAssistant = () => {
           .limit(1);
 
         if (conversations && conversations.length > 0) {
-          const convId = conversations[0].id;
-          setConversationId(convId);
-
-          // Load message history
-          const { data: messageHistory } = await supabase
-            .from('chat_messages')
-            .select('*')
-            .eq('conversation_id', convId)
-            .order('created_at', { ascending: true });
-
-          if (messageHistory) {
-            setMessages(messageHistory.map(msg => ({
-              role: msg.role as "user" | "assistant",
-              content: msg.content,
-              sources: msg.sources ? (Array.isArray(msg.sources) ? msg.sources : []) : undefined
-            })));
-          }
+          await loadConversation(conversations[0].id);
         } else {
-          // Create new conversation
-          const { data: newConv } = await supabase
-            .from('chat_conversations')
-            .insert({ user_id: user.id })
-            .select()
-            .single();
-
-          if (newConv) {
-            setConversationId(newConv.id);
-          }
+          await createNewConversation();
         }
       } catch (error) {
         console.error('Error initializing conversation:', error);
@@ -80,6 +57,55 @@ const AIAssistant = () => {
 
     initConversation();
   }, []);
+
+  const loadConversation = async (convId: string) => {
+    try {
+      setConversationId(convId);
+      setMessages([]);
+      setIsLoadingHistory(true);
+
+      // Load message history
+      const { data: messageHistory } = await supabase
+        .from('chat_messages')
+        .select('*')
+        .eq('conversation_id', convId)
+        .order('created_at', { ascending: true });
+
+      if (messageHistory) {
+        setMessages(messageHistory.map(msg => ({
+          role: msg.role as "user" | "assistant",
+          content: msg.content,
+          sources: msg.sources ? (Array.isArray(msg.sources) ? msg.sources : []) : undefined
+        })));
+      }
+    } catch (error) {
+      console.error('Error loading conversation:', error);
+      toast.error("Failed to load conversation");
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const createNewConversation = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: newConv } = await supabase
+        .from('chat_conversations')
+        .insert({ user_id: user.id, title: 'New Conversation' })
+        .select()
+        .single();
+
+      if (newConv) {
+        setConversationId(newConv.id);
+        setMessages([]);
+      }
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+      toast.error("Failed to create conversation");
+    }
+  };
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -183,102 +209,117 @@ const AIAssistant = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-background via-background to-muted">
-      <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto px-4 py-4 flex items-center gap-4">
-          <Button variant="ghost" onClick={() => navigate("/dashboard")}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div className="flex items-center gap-2">
-            <BookOpen className="h-6 w-6 text-primary" />
-            <div>
-              <h1 className="font-bold text-xl">AI Study Assistant</h1>
-              <p className="text-sm text-muted-foreground">Ask questions about CSE materials</p>
+    <SidebarProvider>
+      <div className="flex min-h-screen w-full">
+        <ConversationSidebar
+          currentConversationId={conversationId}
+          onConversationSelect={loadConversation}
+          onNewConversation={createNewConversation}
+        />
+
+        <div className="flex flex-col flex-1 h-screen bg-gradient-to-br from-background via-background to-muted">
+          {/* Header */}
+          <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm">
+            <div className="container mx-auto px-4 py-4 flex items-center gap-4">
+              <SidebarTrigger />
+              <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")}>
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-primary/10 rounded-lg">
+                  <BookOpen className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h1 className="font-bold text-xl">AI Study Assistant</h1>
+                  <p className="text-xs text-muted-foreground">Ask questions about CSE materials</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Messages Area */}
+          <div className="flex-1 container max-w-4xl mx-auto px-4 py-6 overflow-hidden">
+            <ScrollArea className="h-full pr-4" ref={scrollAreaRef}>
+              {messages.length === 0 ? (
+                <div className="flex items-center justify-center h-full">
+                  <Card className="max-w-md shadow-lg border-primary/20">
+                    <CardHeader className="space-y-3">
+                      <div className="mx-auto p-3 bg-primary/10 rounded-full w-fit">
+                        <Sparkles className="h-6 w-6 text-primary" />
+                      </div>
+                      <CardTitle className="text-center">Welcome to AI Assistant!</CardTitle>
+                      <CardDescription className="text-center">
+                        Ask me anything about the Civil Service Exam materials. I'll search through the uploaded documents to help you.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3 text-sm">
+                        <p className="font-medium text-muted-foreground">Example questions:</p>
+                        <div className="space-y-2">
+                          {[
+                            "What are the main topics in vocabulary?",
+                            "Explain analogy questions",
+                            "How to prepare for numerical ability?"
+                          ].map((example, i) => (
+                            <div
+                              key={i}
+                              className="p-3 bg-muted rounded-lg hover:bg-muted/80 transition-colors cursor-pointer"
+                              onClick={() => setInput(example)}
+                            >
+                              <p className="text-foreground">{example}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              ) : (
+                <div className="space-y-1 pb-4">
+                  {messages.map((message, index) => (
+                    <ChatMessage
+                      key={index}
+                      role={message.role}
+                      content={message.content}
+                      sources={message.sources}
+                      isLatest={index === messages.length - 1}
+                    />
+                  ))}
+                  {loading && <TypingIndicator />}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+
+          {/* Input Area */}
+          <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-lg">
+            <div className="container max-w-4xl mx-auto px-4 py-4">
+              <form onSubmit={handleSubmit} className="flex gap-3">
+                <Input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Ask a question about CSE materials..."
+                  disabled={loading}
+                  className="flex-1 h-12 text-base shadow-sm"
+                />
+                <Button 
+                  type="submit" 
+                  disabled={loading || !input.trim()}
+                  size="lg"
+                  className="px-6 shadow-sm"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </form>
+              <p className="text-xs text-muted-foreground text-center mt-2">
+                AI responses are based on uploaded study materials
+              </p>
             </div>
           </div>
         </div>
       </div>
-
-      <div className="flex-1 container max-w-4xl mx-auto px-4 py-6">
-        <ScrollArea className="h-full pr-4">
-          {messages.length === 0 ? (
-            <div className="flex items-center justify-center h-full">
-              <Card className="max-w-md">
-                <CardHeader>
-                  <CardTitle>Welcome to AI Assistant!</CardTitle>
-                  <CardDescription>
-                    Ask me anything about the Civil Service Exam materials. I'll search through the uploaded documents to help you.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 text-sm text-muted-foreground">
-                    <p>Example questions:</p>
-                    <ul className="list-disc list-inside space-y-1">
-                      <li>What are the main topics in vocabulary?</li>
-                      <li>Explain analogy questions</li>
-                      <li>How to prepare for numerical ability?</li>
-                    </ul>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          ) : (
-            <div className="space-y-4 pb-4">
-              {messages.map((message, index) => (
-                <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <Card className={`max-w-[80%] ${message.role === "user" ? "bg-primary text-primary-foreground" : ""}`}>
-                    <CardContent className="p-4">
-                      <p className="whitespace-pre-wrap">{message.content}</p>
-                      {message.sources && message.sources.length > 0 && (
-                        <div className="mt-4 pt-4 border-t border-border/50">
-                          <p className="text-sm font-medium mb-2">Sources:</p>
-                          <div className="space-y-2">
-                            {message.sources.map((source: any, idx: number) => (
-                              <div key={idx} className="text-xs bg-muted/50 p-2 rounded">
-                                <p className="font-medium">{source.document} - {source.module}</p>
-                                <p className="text-muted-foreground mt-1">{source.text}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-              ))}
-              {loading && <TypingIndicator />}
-              <div ref={messagesEndRef} />
-            </div>
-          )}
-        </ScrollArea>
-      </div>
-
-      {/* Input Area */}
-      <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-lg">
-        <div className="container max-w-4xl mx-auto px-4 py-4">
-          <form onSubmit={handleSubmit} className="flex gap-3">
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask a question about CSE materials..."
-              disabled={loading}
-              className="flex-1 h-12 text-base shadow-sm"
-            />
-            <Button 
-              type="submit" 
-              disabled={loading || !input.trim()}
-              size="lg"
-              className="px-6 shadow-sm"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-          </form>
-          <p className="text-xs text-muted-foreground text-center mt-2">
-            AI responses are based on uploaded study materials
-          </p>
-        </div>
-      </div>
-    </div>
+    </SidebarProvider>
   );
 };
 
