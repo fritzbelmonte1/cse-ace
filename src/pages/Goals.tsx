@@ -155,12 +155,38 @@ const Goals = () => {
 
   const handleToggleComplete = async (goalId: string, currentStatus: boolean) => {
     try {
+      const goal = goals.find(g => g.id === goalId);
+      if (!goal) return;
+
       const { error } = await supabase
         .from("goals")
         .update({ is_completed: !currentStatus })
         .eq("id", goalId);
 
       if (error) throw error;
+
+      // Send email notification for goal completion
+      if (!currentStatus) {
+        const moduleName = modules.find(m => m.id === goal.module)?.name || goal.module;
+        const progress = moduleProgress[goal.module] || { current: 0, sessions: 0 };
+        
+        try {
+          await supabase.functions.invoke("send-goal-notification", {
+            body: {
+              type: "goal_completed",
+              goalData: {
+                module: moduleName,
+                targetScore: goal.target_score,
+                currentScore: progress.current,
+              },
+            },
+          });
+          console.log("Goal completion notification sent");
+        } catch (emailError) {
+          console.error("Error sending notification:", emailError);
+          // Don't fail the whole operation if email fails
+        }
+      }
 
       toast.success(currentStatus ? "Goal marked as incomplete" : "Goal completed! 🎉");
       loadGoals();
@@ -286,7 +312,7 @@ const Goals = () => {
 
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Study Goals</h1>
-          <p className="text-muted-foreground">Track your progress toward your target scores</p>
+          <p className="text-muted-foreground">Track your progress toward your target scores. You'll receive email notifications when you complete goals and reminders for upcoming exams.</p>
         </div>
 
         {goals.length === 0 ? (
