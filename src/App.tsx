@@ -11,6 +11,7 @@ import AdminUpload from "./pages/AdminUpload";
 import Auth from "./pages/Auth";
 import AIAssistant from "./pages/AIAssistant";
 import Profile from "./pages/Profile";
+import Analytics from "./pages/Analytics";
 import NotFound from "./pages/NotFound";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
@@ -30,7 +31,8 @@ const App = () => (
           <Route path="/results/:moduleId" element={<ProtectedRoute><Results /></ProtectedRoute>} />
           <Route path="/ai-assistant" element={<ProtectedRoute><AIAssistant /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-          <Route 
+          <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+          <Route
             path="/admin/upload" 
             element={
               <ProtectedRoute requiredRole="admin">
