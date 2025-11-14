@@ -1,1 +1,4 @@
-project_id = "xywjqrnojtwdpzzsaagh"
+[functions.ai-study-recommendations]
+verify_jwt = true
+
+[functions.check-achievements]
