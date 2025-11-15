@@ -221,6 +221,9 @@ const AdminUpload = () => {
         const questionsToInsert = parseResult.questions.map((q) => {
           const normalize = (v?: string) => (typeof v === 'string' ? v : '');
           const validAnswer = !!q.correct_answer && /^[ABCD]$/i.test(q.correct_answer);
+          const hasAllFields = !!(q.question && q.option_a && q.option_b && q.option_c && q.option_d);
+          // Auto-approve complete questions uploaded by admin, mark incomplete as pending
+          const status = (hasAllFields && validAnswer) ? 'approved' : 'pending';
           return {
             question: normalize(q.question) || '[Missing question]',
             option_a: normalize(q.option_a),
@@ -230,6 +233,7 @@ const AdminUpload = () => {
             correct_answer: validAnswer ? q.correct_answer.toUpperCase() : '',
             module,
             document_id: docData.id,
+            status,
             confidence_score: 1.0
           };
         });
@@ -241,8 +245,13 @@ const AdminUpload = () => {
         if (insertError) throw insertError;
 
         setUploadProgress(100);
+        const approvedCount = questionsToInsert.filter(q => q.status === 'approved').length;
+        const pendingCount = questionsToInsert.filter(q => q.status === 'pending').length;
+        
         toast.success(`Successfully uploaded ${parseResult.questions.length} questions`, {
-          description: parseResult.invalidBlocks?.length ? `${parseResult.invalidBlocks.length} had missing fields and were saved as 'pending' for review.` : undefined
+          description: pendingCount > 0 
+            ? `${approvedCount} approved, ${pendingCount} pending review (missing fields)` 
+            : 'All questions approved and ready for practice'
         });
         setPastedText("");
         setUploading(false);
