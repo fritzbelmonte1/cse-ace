@@ -150,6 +150,9 @@ export default function AdminUsers() {
             <Button variant="outline" onClick={() => navigate("/admin/upload")}>
               Upload Documents
             </Button>
+            <Button variant="outline" onClick={() => navigate("/admin/questions")}>
+              Review Questions
+            </Button>
             <Button variant="outline" onClick={() => navigate("/admin/settings")}>
               Settings
             </Button>

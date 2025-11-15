@@ -205,6 +205,9 @@ const AdminUpload = () => {
           </Button>
           
           <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate("/admin/questions")}>
+              Review Questions
+            </Button>
             <Button variant="outline" onClick={() => navigate("/admin/users")}>
               Manage Users
             </Button>
