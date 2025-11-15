@@ -218,19 +218,24 @@ const AdminUpload = () => {
         setUploadStatus("Uploading questions to database...");
         setUploadProgress(70);
 
-        // Insert questions directly into extracted_questions table
-        const questionsToInsert = parseResult.questions.map(q => ({
-          question: q.question,
-          option_a: q.option_a,
-          option_b: q.option_b,
-          option_c: q.option_c,
-          option_d: q.option_d,
-          correct_answer: q.correct_answer,
-          module,
-          document_id: docData.id,
-          status: 'pending',
-          confidence_score: 1.0
-        }));
+        const questionsToInsert = parseResult.questions.map((q) => {
+          const normalize = (v?: string) => (typeof v === 'string' ? v : '');
+          const validAnswer = !!q.correct_answer && /^[ABCD]$/i.test(q.correct_answer);
+          const hasAll = !!(q.question && q.option_a && q.option_b && q.option_c && q.option_d);
+          const status = hasAll && validAnswer ? 'pending' : 'invalid';
+          return {
+            question: normalize(q.question) || '[Missing question]',
+            option_a: normalize(q.option_a),
+            option_b: normalize(q.option_b),
+            option_c: normalize(q.option_c),
+            option_d: normalize(q.option_d),
+            correct_answer: validAnswer ? q.correct_answer.toUpperCase() : '',
+            module,
+            document_id: docData.id,
+            status,
+            confidence_score: 1.0
+          };
+        });
 
         const { error: insertError } = await supabase
           .from('extracted_questions')
@@ -239,7 +244,9 @@ const AdminUpload = () => {
         if (insertError) throw insertError;
 
         setUploadProgress(100);
-        toast.success(`Successfully uploaded ${parseResult.questions.length} questions`);
+        toast.success(`Successfully uploaded ${parseResult.questions.length} questions`, {
+          description: parseResult.invalidBlocks?.length ? `${parseResult.invalidBlocks.length} marked as 'invalid' due to missing fields.` : undefined
+        });
         setPastedText("");
         setUploading(false);
         return;
