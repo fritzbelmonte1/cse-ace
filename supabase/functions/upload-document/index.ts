@@ -76,14 +76,11 @@ serve(async (req) => {
     const { data: docData, error: docError } = await supabase
       .from('documents')
       .insert({
-        user_id: user.id,
+        uploaded_by: user.id,
         file_name: file.name,
-        file_type: file.type,
         file_path: fileName,
-        file_size: file.size,
-        is_public: true,
         purpose: purpose,
-        module: module,
+        module: module || null,
         processed: false
       })
       .select()
