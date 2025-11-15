@@ -16,6 +16,9 @@ import AIAssistant from "./pages/AIAssistant";
 import Profile from "./pages/Profile";
 import Analytics from "./pages/Analytics";
 import Goals from "./pages/Goals";
+import ExamSetup from "./pages/ExamSetup";
+import ExamInterface from "./pages/ExamInterface";
+import ExamResults from "./pages/ExamResults";
 import Flashcards from "./pages/Flashcards";
 import BrowseDecks from "./pages/BrowseDecks";
 import VoiceHistory from "./pages/VoiceHistory";
@@ -36,6 +39,9 @@ const App = () => (
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/practice/:moduleId" element={<ProtectedRoute><Practice /></ProtectedRoute>} />
           <Route path="/results/:moduleId" element={<ProtectedRoute><Results /></ProtectedRoute>} />
+          <Route path="/exam/setup" element={<ProtectedRoute><ExamSetup /></ProtectedRoute>} />
+          <Route path="/exam/:examId" element={<ProtectedRoute><ExamInterface /></ProtectedRoute>} />
+          <Route path="/exam/:examId/results" element={<ProtectedRoute><ExamResults /></ProtectedRoute>} />
           <Route path="/ai-assistant" element={<ProtectedRoute><AIAssistant /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />

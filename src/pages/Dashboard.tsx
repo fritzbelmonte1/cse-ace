@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, LogOut, Shield, Brain, TrendingUp, MessageSquare, User, BarChart, Target, Layers, Users } from "lucide-react";
+import { BookOpen, LogOut, Shield, Brain, TrendingUp, MessageSquare, User, BarChart, Target as TargetIcon, Layers, Users } from "lucide-react";
 import { toast } from "sonner";
 
 const modules = [
@@ -88,7 +88,7 @@ const Dashboard = () => {
               Analytics
             </Button>
             <Button variant="outline" onClick={() => navigate("/goals")}>
-              <Target className="mr-2 h-4 w-4" />
+              <TargetIcon className="mr-2 h-4 w-4" />
               Goals
             </Button>
             <Button variant="outline" onClick={() => navigate("/profile")}>
@@ -103,6 +103,25 @@ const Dashboard = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+          {/* Mock Exam Mode Card */}
+          <Card
+            className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 border-2 hover:border-primary bg-gradient-to-br from-orange-50 to-red-50 dark:from-orange-950/20 dark:to-red-950/20"
+            onClick={() => navigate('/exam/setup')}
+          >
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <TargetIcon className="h-6 w-6" />
+                  Mock Exam Mode
+                </CardTitle>
+              </div>
+              <CardDescription className="text-base">
+                Take full-length timed exams under realistic conditions
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          {/* Practice Modules */}
           {modules.map((module) => {
             const Icon = module.icon;
             return (

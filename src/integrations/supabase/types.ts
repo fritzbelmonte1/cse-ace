@@ -420,6 +420,66 @@ export type Database = {
         }
         Relationships: []
       }
+      mock_exams: {
+        Row: {
+          ai_feedback: string | null
+          answers: Json
+          completed_at: string | null
+          created_at: string
+          exam_type: string
+          id: string
+          module: string
+          question_performance: Json | null
+          questions_data: Json
+          score: number | null
+          started_at: string
+          status: string
+          time_limit_minutes: number | null
+          time_spent_seconds: number | null
+          total_questions: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_feedback?: string | null
+          answers?: Json
+          completed_at?: string | null
+          created_at?: string
+          exam_type: string
+          id?: string
+          module: string
+          question_performance?: Json | null
+          questions_data?: Json
+          score?: number | null
+          started_at?: string
+          status?: string
+          time_limit_minutes?: number | null
+          time_spent_seconds?: number | null
+          total_questions: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ai_feedback?: string | null
+          answers?: Json
+          completed_at?: string | null
+          created_at?: string
+          exam_type?: string
+          id?: string
+          module?: string
+          question_performance?: Json | null
+          questions_data?: Json
+          score?: number | null
+          started_at?: string
+          status?: string
+          time_limit_minutes?: number | null
+          time_spent_seconds?: number | null
+          total_questions?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       practice_sessions: {
         Row: {
           created_at: string
