@@ -9,3 +9,9 @@ verify_jwt = true
 
 [functions.text-to-speech]
 verify_jwt = true
+
+[functions.process-document]
+verify_jwt = true
+
+[functions.generate-exam-feedback]
+verify_jwt = true
