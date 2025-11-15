@@ -130,39 +130,88 @@ serve(async (req) => {
       if (toolCall) {
         const { questions } = JSON.parse(toolCall.function.arguments);
         
-        // Insert questions mapped to existing schema (option_a..d, correct_answer as A/B/C/D)
-        const questionsToInsert = questions.map((q: any) => {
-          const opts = Array.isArray(q.options) ? q.options : [];
-          const optionA = String(opts[0] ?? '');
-          const optionB = String(opts[1] ?? '');
-          const optionC = String(opts[2] ?? '');
-          const optionD = String(opts[3] ?? '');
-          const correctIdx = typeof q.correct_answer === 'number' && q.correct_answer >= 0 && q.correct_answer <= 3 ? q.correct_answer : 0;
-          const letters = ['A','B','C','D'] as const;
-          const correctLetter = letters[correctIdx];
-
-          return {
-            document_id: documentId,
-            question: String(q.question_text ?? ''),
-            option_a: optionA,
-            option_b: optionB,
-            option_c: optionC,
-            option_d: optionD,
-            correct_answer: correctLetter,
-            module: String(q.module || doc.module || 'general'),
-          };
+        console.log(`AI extracted ${questions.length} questions. Validating...`);
+        
+        // Validation function
+        const isValidQuestion = (q: any) => {
+          const issues: string[] = [];
+          
+          if (!q.question_text || String(q.question_text).trim() === '') {
+            issues.push('empty question text');
+          }
+          
+          if (!Array.isArray(q.options) || q.options.length !== 4) {
+            issues.push(`invalid options count (${Array.isArray(q.options) ? q.options.length : 0}/4)`);
+          } else {
+            const emptyOptions = q.options.filter((opt: any) => !opt || String(opt).trim() === '').length;
+            if (emptyOptions > 0) {
+              issues.push(`${emptyOptions} empty options`);
+            }
+          }
+          
+          if (typeof q.correct_answer !== 'number' || q.correct_answer < 0 || q.correct_answer > 3) {
+            issues.push(`invalid correct_answer index (${q.correct_answer})`);
+          }
+          
+          return { valid: issues.length === 0, issues };
+        };
+        
+        // Validate and categorize
+        const validQuestions: any[] = [];
+        const dropReasons: { [key: string]: number } = {};
+        
+        questions.forEach((q: any, index: number) => {
+          const validation = isValidQuestion(q);
+          
+          if (validation.valid) {
+            validQuestions.push(q);
+          } else {
+            if (Object.keys(dropReasons).length < 5) {
+              console.log(`Dropping question ${index + 1}: ${validation.issues.join(', ')}`);
+            }
+            
+            validation.issues.forEach(issue => {
+              dropReasons[issue] = (dropReasons[issue] || 0) + 1;
+            });
+          }
         });
-
-        const { error: insertError } = await supabase
-          .from('extracted_questions')
-          .insert(questionsToInsert);
-
-        if (insertError) {
-          console.error('Insert error:', insertError);
-          throw insertError;
+        
+        console.log(`Validation complete: ${validQuestions.length} valid, ${questions.length - validQuestions.length} dropped`);
+        if (Object.keys(dropReasons).length > 0) {
+          console.log('Drop reasons:', JSON.stringify(dropReasons, null, 2));
         }
+        
+        if (validQuestions.length > 0) {
+          const questionsToInsert = validQuestions.map((q: any) => {
+            const opts = q.options;
+            const correctIdx = q.correct_answer;
+            const letters = ['A', 'B', 'C', 'D'] as const;
+            
+            return {
+              document_id: documentId,
+              question: String(q.question_text),
+              option_a: String(opts[0]),
+              option_b: String(opts[1]),
+              option_c: String(opts[2]),
+              option_d: String(opts[3]),
+              correct_answer: letters[correctIdx],
+              module: String(q.module || doc.module || 'general'),
+            };
+          });
 
-        console.log(`Extracted ${questions.length} questions`);
+          const { error: insertError } = await supabase
+            .from('extracted_questions')
+            .insert(questionsToInsert);
+
+          if (insertError) {
+            console.error('Insert error:', insertError);
+            throw insertError;
+          }
+
+          console.log(`Successfully inserted ${validQuestions.length} questions`);
+        } else {
+          console.log('No valid questions to insert');
+        }
       }
 
     } else if (doc.purpose === 'rag') {
