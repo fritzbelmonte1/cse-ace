@@ -130,16 +130,27 @@ serve(async (req) => {
       if (toolCall) {
         const { questions } = JSON.parse(toolCall.function.arguments);
         
-        // Insert questions
-        const questionsToInsert = questions.map((q: any) => ({
-          document_id: documentId,
-          question_text: q.question_text,
-          options: JSON.stringify(q.options),
-          correct_answer: q.correct_answer,
-          explanation: q.explanation || '',
-          difficulty: q.difficulty || 'medium',
-          module: q.module || doc.module || 'general'
-        }));
+        // Insert questions mapped to existing schema (option_a..d, correct_answer as text)
+        const questionsToInsert = questions.map((q: any) => {
+          const opts = Array.isArray(q.options) ? q.options : [];
+          const optionA = opts[0] ?? '';
+          const optionB = opts[1] ?? '';
+          const optionC = opts[2] ?? '';
+          const optionD = opts[3] ?? '';
+          const correctIdx = typeof q.correct_answer === 'number' ? q.correct_answer : 0;
+          const correctAnswerText = opts[correctIdx] ?? '';
+
+          return {
+            document_id: documentId,
+            question: q.question_text,
+            option_a: optionA,
+            option_b: optionB,
+            option_c: optionC,
+            option_d: optionD,
+            correct_answer: correctAnswerText,
+            module: q.module || doc.module || 'general',
+          };
+        });
 
         const { error: insertError } = await supabase
           .from('extracted_questions')
