@@ -290,20 +290,94 @@ const AdminUpload = () => {
         return;
       }
 
-      // Handle structured question paste - direct upload without AI extraction
+      // Handle question paste - try AI parsing for better results
       if (purpose === "questions" && inputMethod === "paste") {
-        setUploadStatus("Parsing structured questions...");
-        setUploadProgress(30);
+        setUploadStatus("AI is parsing questions...");
+        setUploadProgress(20);
 
-        const parseResult = parseStructuredQuestions(pastedText);
+        // Use AI to parse questions
+        const { data: aiData, error: aiError } = await supabase.functions.invoke('parse-questions-ai', {
+          body: { text: pastedText, module }
+        });
 
-        if (parseResult.questions.length === 0) {
-          toast.error("No questions could be extracted from the pasted text.");
+        if (aiError || !aiData?.questions || aiData.questions.length === 0) {
+          console.error('AI parsing failed, trying structured format:', aiError);
+          
+          // Fallback to structured parsing
+          setUploadStatus("Trying structured format...");
+          const parseResult = parseStructuredQuestions(pastedText);
+
+          if (parseResult.questions.length === 0) {
+            toast.error("No questions found. Please paste in Q:/A:/B:/C:/D: format or use plain text for AI parsing.");
+            setUploading(false);
+            return;
+          }
+          
+          // Use structured parsing results (existing code below will handle it)
+          const structuredQuestions = parseResult.questions;
+          console.log(`Structured parser found ${structuredQuestions.length} questions`);
+          
+          setUploadProgress(40);
+          
+          const { data: docData, error: docError } = await supabase
+            .from('documents')
+            .insert({
+              uploaded_by: user.id,
+              file_name: `pasted-questions-${Date.now()}.txt`,
+              file_path: '',
+              purpose: 'questions',
+              module,
+              processed: true,
+              processing_status: 'completed'
+            })
+            .select()
+            .maybeSingle();
+
+          if (docError || !docData) throw docError || new Error('Failed to create document record');
+
+          const questionsToInsert = structuredQuestions.map((q) => {
+            const normalize = (v?: string) => (typeof v === 'string' ? v : '');
+            const validAnswer = !!q.correct_answer && /^[ABCD]$/i.test(q.correct_answer);
+            const hasAllFields = !!(q.question && q.option_a && q.option_b && q.option_c && q.option_d);
+            const status = (hasAllFields && validAnswer) ? 'approved' : 'pending';
+            return {
+              question: normalize(q.question) || '[Missing question]',
+              option_a: normalize(q.option_a),
+              option_b: normalize(q.option_b),
+              option_c: normalize(q.option_c),
+              option_d: normalize(q.option_d),
+              correct_answer: validAnswer ? q.correct_answer.toUpperCase() : '',
+              module,
+              document_id: docData.id,
+              status,
+              confidence_score: 1.0
+            };
+          });
+
+          const { error: insertError } = await supabase
+            .from('extracted_questions')
+            .insert(questionsToInsert);
+
+          if (insertError) throw insertError;
+
+          const approvedCount = questionsToInsert.filter(q => q.status === 'approved').length;
+          const pendingCount = questionsToInsert.filter(q => q.status === 'pending').length;
+
+          toast.success(`Uploaded ${structuredQuestions.length} questions`, {
+            description: pendingCount > 0 
+              ? `${approvedCount} approved, ${pendingCount} pending` 
+              : 'All approved'
+          });
+
+          setPastedText("");
           setUploading(false);
+          setUploadProgress(0);
+          setUploadStatus("");
           return;
         }
-        
-        console.log(`Successfully parsed ${parseResult.questions.length} questions`);
+
+        // AI parsing succeeded
+        console.log(`AI extracted ${aiData.questions.length} questions`);
 
         // Create a document record representing this pasted batch
         setUploadStatus("Creating document record for pasted questions...");
@@ -328,7 +402,7 @@ const AdminUpload = () => {
         setUploadStatus("Uploading questions to database...");
         setUploadProgress(70);
 
-        const questionsToInsert = parseResult.questions.map((q) => {
+        const questionsToInsert = aiData.questions.map((q: any) => {
           const normalize = (v?: string) => (typeof v === 'string' ? v : '');
           const validAnswer = !!q.correct_answer && /^[ABCD]$/i.test(q.correct_answer);
           const hasAllFields = !!(q.question && q.option_a && q.option_b && q.option_c && q.option_d);
@@ -358,7 +432,7 @@ const AdminUpload = () => {
         const approvedCount = questionsToInsert.filter(q => q.status === 'approved').length;
         const pendingCount = questionsToInsert.filter(q => q.status === 'pending').length;
         
-        toast.success(`Successfully uploaded ${parseResult.questions.length} questions`, {
+        toast.success(`AI extracted ${aiData.questions.length} questions!`, {
           description: pendingCount > 0 
             ? `${approvedCount} approved, ${pendingCount} pending review (missing fields)` 
             : 'All questions approved and ready for practice'
@@ -571,39 +645,25 @@ const AdminUpload = () => {
                   {purpose === "questions" ? (
                     <>
                       <div className="text-xs text-muted-foreground mb-2 p-3 bg-muted rounded-md">
-                        <p className="font-medium mb-1">Format for structured questions:</p>
-                        <pre className="text-xs">
-Q: Your question text here?{'\n'}A: Option A text{'\n'}B: Option B text{'\n'}C: Option C text{'\n'}D: Option D text{'\n'}Correct: A{'\n\n'}Q: Next question...
+                        <p className="font-medium mb-1">✨ AI-powered question extraction (Gemini)</p>
+                        <p className="mb-2">Just paste your questions in any format! The AI will automatically extract:</p>
+                        <ul className="text-xs list-disc list-inside space-y-1">
+                          <li>Question text</li>
+                          <li>All 4 options (A, B, C, D)</li>
+                          <li>Correct answer</li>
+                        </ul>
+                        <p className="mt-2">Or use structured format:</p>
+                        <pre className="text-xs mt-1">
+Q: Your question?{'\n'}A: Option A{'\n'}B: Option B{'\n'}C: Option C{'\n'}D: Option D{'\n'}Correct: A
                         </pre>
-                        <p className="mt-2 text-primary font-medium">✨ Or use AI to automatically parse any format!</p>
                       </div>
                       <Textarea
                         value={pastedText}
                         onChange={(e) => setPastedText(e.target.value)}
-                        placeholder="Q: What is the capital of France?&#10;A: London&#10;B: Paris&#10;C: Berlin&#10;D: Madrid&#10;Correct: B&#10;&#10;Q: Next question..."
+                        placeholder="Paste your numerical questions here in any format..."
                         disabled={uploading || aiParsing}
                         className="min-h-[200px] font-mono text-sm"
                       />
-                      {pastedText.trim() && module && (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          onClick={handleAiParse}
-                          disabled={aiParsing || uploading}
-                          className="w-full"
-                        >
-                          {aiParsing ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              AI Parsing Questions...
-                            </>
-                          ) : (
-                            <>
-                              ✨ Parse with AI (Gemini)
-                            </>
-                          )}
-                        </Button>
-                      )}
                     </>
                   ) : (
                     <Textarea
@@ -651,12 +711,12 @@ Q: Your question text here?{'\n'}A: Option A text{'\n'}B: Option B text{'\n'}C: 
                 {uploading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Uploading...
+                    {uploadStatus || "Processing..."}
                   </>
                 ) : (
                   <>
                     <Upload className="mr-2 h-4 w-4" />
-                    {inputMethod === "paste" && purpose === "questions" ? "Parse Structured Format" : "Upload Document"}
+                    {inputMethod === "paste" && purpose === "questions" ? "✨ Extract Questions with AI" : "Upload Document"}
                   </>
                 )}
               </Button>
