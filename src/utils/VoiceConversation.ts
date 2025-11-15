@@ -21,6 +21,9 @@ export class VoiceConversation {
   private audioContext: AudioContext | null = null;
   private isRecording = false;
   private callbacks: ConversationCallbacks;
+  private voiceConversationId: string | null = null;
+  private sessionStartTime: number | null = null;
+  private userTranscriptBuffer: string = '';
 
   constructor(callbacks: ConversationCallbacks = {}) {
     this.callbacks = callbacks;
@@ -31,6 +34,25 @@ export class VoiceConversation {
   async startSession(conversationId?: string, context?: string) {
     try {
       console.log('[VoiceConversation] Starting session...');
+
+      // Create voice conversation record in database
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: voiceConv } = await supabase
+          .from('voice_conversations')
+          .insert({
+            user_id: user.id,
+            title: 'Voice Chat Session',
+            started_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+
+        if (voiceConv) {
+          this.voiceConversationId = voiceConv.id;
+          this.sessionStartTime = Date.now();
+        }
+      }
 
       // Get signed URL from edge function
       const { data, error } = await supabase.functions.invoke('create-voice-session', {
@@ -56,7 +78,7 @@ export class VoiceConversation {
         await this.startRecording();
       };
 
-      this.ws.onmessage = (event) => {
+      this.ws.onmessage = async (event) => {
         try {
           const message = JSON.parse(event.data);
           console.log('[VoiceConversation] Message:', message.type);
@@ -70,11 +92,21 @@ export class VoiceConversation {
             this.audio.pause();
             this.audio.currentTime = 0;
           } else if (message.type === 'agent_response') {
-            // Agent finished speaking
+            // Agent finished speaking - save to database
+            if (this.voiceConversationId && message.text) {
+              await this.saveMessage('assistant', message.text);
+            }
             this.callbacks.onModeChange?.({ mode: 'listening' });
           } else if (message.type === 'user_transcript') {
             // User is speaking
+            this.userTranscriptBuffer = message.text || '';
             this.callbacks.onModeChange?.({ mode: 'speaking' });
+          } else if (message.type === 'user_transcript_complete') {
+            // User finished speaking - save to database
+            if (this.voiceConversationId && message.text) {
+              await this.saveMessage('user', message.text);
+              this.userTranscriptBuffer = '';
+            }
           }
         } catch (err) {
           console.error('[VoiceConversation] Error parsing message:', err);
@@ -86,9 +118,22 @@ export class VoiceConversation {
         this.callbacks.onError?.(new Error('WebSocket connection error'));
       };
 
-      this.ws.onclose = () => {
+      this.ws.onclose = async () => {
         console.log('[VoiceConversation] WebSocket closed');
         this.stopRecording();
+        
+        // Update conversation end time and duration
+        if (this.voiceConversationId && this.sessionStartTime) {
+          const duration = Math.floor((Date.now() - this.sessionStartTime) / 1000);
+          await supabase
+            .from('voice_conversations')
+            .update({
+              ended_at: new Date().toISOString(),
+              duration_seconds: duration,
+            })
+            .eq('id', this.voiceConversationId);
+        }
+        
         this.callbacks.onDisconnect?.();
       };
 
@@ -170,6 +215,35 @@ export class VoiceConversation {
       });
     } catch (error) {
       console.error('[VoiceConversation] Error playing audio:', error);
+    }
+  }
+
+  private async saveMessage(role: 'user' | 'assistant', content: string) {
+    if (!this.voiceConversationId || !content.trim()) return;
+
+    try {
+      await supabase.from('voice_messages').insert({
+        conversation_id: this.voiceConversationId,
+        role,
+        content: content.trim(),
+        timestamp: new Date().toISOString(),
+      });
+
+      // Fetch current message count and increment
+      const { data: conversation } = await supabase
+        .from('voice_conversations')
+        .select('message_count')
+        .eq('id', this.voiceConversationId)
+        .single();
+
+      if (conversation) {
+        await supabase
+          .from('voice_conversations')
+          .update({ message_count: (conversation.message_count || 0) + 1 })
+          .eq('id', this.voiceConversationId);
+      }
+    } catch (error) {
+      console.error('[VoiceConversation] Error saving message:', error);
     }
   }
 

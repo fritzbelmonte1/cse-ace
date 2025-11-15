@@ -17,6 +17,7 @@ import Analytics from "./pages/Analytics";
 import Goals from "./pages/Goals";
 import Flashcards from "./pages/Flashcards";
 import BrowseDecks from "./pages/BrowseDecks";
+import VoiceHistory from "./pages/VoiceHistory";
 import NotFound from "./pages/NotFound";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
@@ -64,6 +65,7 @@ const App = () => (
           />
             <Route path="/flashcards" element={<ProtectedRoute><Flashcards /></ProtectedRoute>} />
             <Route path="/browse-decks" element={<ProtectedRoute><BrowseDecks /></ProtectedRoute>} />
+            <Route path="/voice-history" element={<ProtectedRoute><VoiceHistory /></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
