@@ -611,19 +611,33 @@ const AdminUpload = () => {
 
               {purpose === "questions" && (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Module</label>
-                  <Select value={module} onValueChange={setModule}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select module" />
+                  <label className="text-sm font-medium flex items-center gap-1">
+                    Module <span className="text-destructive">*</span>
+                  </label>
+                  <Select value={module} onValueChange={setModule} required>
+                    <SelectTrigger className={!module ? "border-destructive/50 bg-destructive/5" : ""}>
+                      <SelectValue placeholder="⚠️ Select a module before uploading" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="vocabulary">Vocabulary</SelectItem>
-                      <SelectItem value="analogy">Analogy</SelectItem>
-                      <SelectItem value="reading">Reading Comprehension</SelectItem>
-                      <SelectItem value="numerical">Numerical Ability</SelectItem>
-                      <SelectItem value="clerical">Clerical Ability</SelectItem>
+                      <SelectItem value="vocabulary">📚 Vocabulary</SelectItem>
+                      <SelectItem value="analogy">🔗 Analogy</SelectItem>
+                      <SelectItem value="reading">📖 Reading Comprehension</SelectItem>
+                      <SelectItem value="numerical">🔢 Numerical Ability</SelectItem>
+                      <SelectItem value="clerical">📋 Clerical Ability</SelectItem>
                     </SelectContent>
                   </Select>
+                  {!module && (
+                    <p className="text-xs text-destructive flex items-center gap-1">
+                      <XCircle className="h-3 w-3" />
+                      Module selection is required for question uploads
+                    </p>
+                  )}
+                  {module && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3 text-green-500" />
+                      Questions will be categorized as <span className="font-medium">{module}</span>
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -710,7 +724,16 @@ Q: Your question?{'\n'}A: Option A{'\n'}B: Option B{'\n'}C: Option C{'\n'}D: Opt
                 </div>
               )}
 
-              <Button type="submit" disabled={uploading || aiParsing || (inputMethod === "file" && !file) || (inputMethod === "paste" && !pastedText.trim())}>
+              <Button 
+                type="submit" 
+                disabled={
+                  uploading || 
+                  aiParsing || 
+                  (inputMethod === "file" && !file) || 
+                  (inputMethod === "paste" && !pastedText.trim()) ||
+                  (purpose === "questions" && !module)
+                }
+              >
                 {uploading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
