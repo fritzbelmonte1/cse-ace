@@ -11,6 +11,7 @@ import AdminUpload from "./pages/AdminUpload";
 import AdminUsers from "./pages/AdminUsers";
 import AdminSettings from "./pages/AdminSettings";
 import AdminQuestions from "./pages/AdminQuestions";
+import AdminRecategorize from "./pages/AdminRecategorize";
 import Auth from "./pages/Auth";
 import AIAssistant from "./pages/AIAssistant";
 import Profile from "./pages/Profile";
@@ -75,6 +76,14 @@ const App = () => (
             element={
               <ProtectedRoute requiredRole="admin">
                 <AdminQuestions />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/recategorize"
+            element={
+              <ProtectedRoute requiredRole="admin">
+                <AdminRecategorize />
               </ProtectedRoute>
             }
           />

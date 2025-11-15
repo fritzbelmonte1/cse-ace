@@ -249,13 +249,24 @@ export default function AdminQuestions() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/admin/settings")}>
+            <Button variant="ghost" size="icon" onClick={() => navigate("/admin/upload")}>
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div>
               <h1 className="text-3xl font-bold">Question Review</h1>
               <p className="text-muted-foreground">Review and approve AI-extracted questions</p>
             </div>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate("/admin/recategorize")}>
+              Bulk Recategorize
+            </Button>
+            <Button variant="outline" onClick={() => navigate("/admin/users")}>
+              Manage Users
+            </Button>
+            <Button variant="outline" onClick={() => navigate("/admin/settings")}>
+              Settings
+            </Button>
           </div>
         </div>
 
