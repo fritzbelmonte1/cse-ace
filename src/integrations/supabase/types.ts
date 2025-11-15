@@ -215,6 +215,7 @@ export type Database = {
       }
       extracted_questions: {
         Row: {
+          confidence_score: number | null
           correct_answer: string
           created_at: string
           document_id: string
@@ -227,6 +228,7 @@ export type Database = {
           question: string
         }
         Insert: {
+          confidence_score?: number | null
           correct_answer: string
           created_at?: string
           document_id: string
@@ -239,6 +241,7 @@ export type Database = {
           question: string
         }
         Update: {
+          confidence_score?: number | null
           correct_answer?: string
           created_at?: string
           document_id?: string
