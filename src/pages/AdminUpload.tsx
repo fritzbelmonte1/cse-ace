@@ -25,6 +25,7 @@ const AdminUpload = () => {
   const [uploadStatus, setUploadStatus] = useState("");
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [aiParsing, setAiParsing] = useState(false);
 
   useEffect(() => {
     fetchDocuments();
@@ -149,6 +150,115 @@ const AdminUpload = () => {
     }
 
     return { success: true, questions, invalidBlocks };
+  };
+
+  const handleAiParse = async () => {
+    if (!pastedText.trim()) {
+      toast.error("Please paste some content first");
+      return;
+    }
+
+    if (!module) {
+      toast.error("Please select a module");
+      return;
+    }
+
+    setAiParsing(true);
+    setUploadStatus("AI is parsing questions...");
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Please log in first");
+        navigate("/auth");
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('parse-questions-ai', {
+        body: { text: pastedText, module }
+      });
+
+      if (error) {
+        console.error('AI parsing error:', error);
+        if (error.message.includes('Rate limit')) {
+          toast.error("AI rate limit reached. Please try again in a moment.");
+        } else if (error.message.includes('credits')) {
+          toast.error("AI credits exhausted. Please add credits to continue.");
+        } else {
+          toast.error("Failed to parse questions with AI");
+        }
+        return;
+      }
+
+      if (!data?.questions || data.questions.length === 0) {
+        toast.error("No questions found by AI. Please check the text format.");
+        return;
+      }
+
+      console.log(`AI extracted ${data.questions.length} questions`);
+
+      // Create document record
+      setUploadStatus("Saving parsed questions...");
+      const { data: docData, error: docError } = await supabase
+        .from('documents')
+        .insert({
+          uploaded_by: user.id,
+          file_name: `ai-parsed-${Date.now()}.txt`,
+          file_path: '',
+          purpose: 'questions',
+          module,
+          processed: true,
+          processing_status: 'completed'
+        })
+        .select()
+        .maybeSingle();
+
+      if (docError || !docData) throw docError || new Error('Failed to create document record');
+
+      // Prepare questions for insertion
+      const questionsToInsert = data.questions.map((q: any) => {
+        const hasAllFields = !!(q.question && q.option_a && q.option_b && q.option_c && q.option_d);
+        const validAnswer = !!q.correct_answer && /^[ABCD]$/i.test(q.correct_answer);
+        const status = (hasAllFields && validAnswer) ? 'approved' : 'pending';
+        
+        return {
+          question: q.question || '[Missing question]',
+          option_a: q.option_a || '',
+          option_b: q.option_b || '',
+          option_c: q.option_c || '',
+          option_d: q.option_d || '',
+          correct_answer: validAnswer ? q.correct_answer.toUpperCase() : '',
+          module,
+          document_id: docData.id,
+          status,
+          confidence_score: 1.0
+        };
+      });
+
+      const { error: insertError } = await supabase
+        .from('extracted_questions')
+        .insert(questionsToInsert);
+
+      if (insertError) throw insertError;
+
+      const approvedCount = questionsToInsert.filter(q => q.status === 'approved').length;
+      const pendingCount = questionsToInsert.filter(q => q.status === 'pending').length;
+
+      toast.success(`AI extracted ${data.questions.length} questions!`, {
+        description: pendingCount > 0 
+          ? `${approvedCount} approved, ${pendingCount} pending review` 
+          : 'All questions approved and ready'
+      });
+
+      setPastedText("");
+      setUploadStatus("");
+
+    } catch (error: any) {
+      console.error('Error in AI parsing:', error);
+      toast.error("Failed to parse with AI: " + error.message);
+    } finally {
+      setAiParsing(false);
+    }
   };
 
   const handleUpload = async (e: React.FormEvent) => {
@@ -465,14 +575,35 @@ const AdminUpload = () => {
                         <pre className="text-xs">
 Q: Your question text here?{'\n'}A: Option A text{'\n'}B: Option B text{'\n'}C: Option C text{'\n'}D: Option D text{'\n'}Correct: A{'\n\n'}Q: Next question...
                         </pre>
+                        <p className="mt-2 text-primary font-medium">✨ Or use AI to automatically parse any format!</p>
                       </div>
                       <Textarea
                         value={pastedText}
                         onChange={(e) => setPastedText(e.target.value)}
                         placeholder="Q: What is the capital of France?&#10;A: London&#10;B: Paris&#10;C: Berlin&#10;D: Madrid&#10;Correct: B&#10;&#10;Q: Next question..."
-                        disabled={uploading}
+                        disabled={uploading || aiParsing}
                         className="min-h-[200px] font-mono text-sm"
                       />
+                      {pastedText.trim() && module && (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={handleAiParse}
+                          disabled={aiParsing || uploading}
+                          className="w-full"
+                        >
+                          {aiParsing ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              AI Parsing Questions...
+                            </>
+                          ) : (
+                            <>
+                              ✨ Parse with AI (Gemini)
+                            </>
+                          )}
+                        </Button>
+                      )}
                     </>
                   ) : (
                     <Textarea
@@ -516,7 +647,7 @@ Q: Your question text here?{'\n'}A: Option A text{'\n'}B: Option B text{'\n'}C: 
                 </div>
               )}
 
-              <Button type="submit" disabled={uploading || (inputMethod === "file" && !file) || (inputMethod === "paste" && !pastedText.trim())}>
+              <Button type="submit" disabled={uploading || aiParsing || (inputMethod === "file" && !file) || (inputMethod === "paste" && !pastedText.trim())}>
                 {uploading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -525,7 +656,7 @@ Q: Your question text here?{'\n'}A: Option A text{'\n'}B: Option B text{'\n'}C: 
                 ) : (
                   <>
                     <Upload className="mr-2 h-4 w-4" />
-                    Upload Document
+                    {inputMethod === "paste" && purpose === "questions" ? "Parse Structured Format" : "Upload Document"}
                   </>
                 )}
               </Button>
