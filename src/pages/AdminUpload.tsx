@@ -54,34 +54,17 @@ const AdminUpload = () => {
     setUploading(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        toast.error("Please log in first");
-        navigate("/auth");
-        return;
-      }
-
       const formData = new FormData();
       formData.append('file', file);
       formData.append('purpose', purpose);
       formData.append('module', module || 'general');
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-document`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: formData,
-        }
-      );
+      const { data, error } = await supabase.functions.invoke('upload-document', {
+        body: formData,
+      });
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Upload failed');
+      if (error) {
+        throw new Error(error.message || 'Upload failed');
       }
 
       toast.success("Document uploaded successfully!");
@@ -101,29 +84,12 @@ const AdminUpload = () => {
     if (!confirm("Are you sure you want to delete this document?")) return;
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        toast.error("Please log in first");
-        return;
-      }
+      const { data, error } = await supabase.functions.invoke('delete-document', {
+        body: { documentId },
+      });
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-document`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ documentId }),
-        }
-      );
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Delete failed');
+      if (error) {
+        throw new Error(error.message || 'Delete failed');
       }
 
       toast.success("Document deleted successfully!");
@@ -136,31 +102,13 @@ const AdminUpload = () => {
 
   const handleReprocess = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        toast.error("Please log in first");
-        return;
+      const { data, error } = await supabase.functions.invoke('reprocess-rag-documents');
+
+      if (error) {
+        throw new Error(error.message || 'Reprocess failed');
       }
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reprocess-rag-documents`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Reprocess failed');
-      }
-
-      toast.success(result.message);
+      toast.success("Documents reprocessed successfully");
       fetchDocuments();
     } catch (error: any) {
       console.error('Reprocess error:', error);
