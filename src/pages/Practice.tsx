@@ -228,38 +228,54 @@ const Practice = () => {
   const progress = ((currentIndex + 1) / questions.length) * 100;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted p-4">
-      <div className="container max-w-3xl mx-auto py-8">
-        <Button variant="ghost" onClick={() => navigate("/dashboard")} className="mb-4">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Dashboard
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted pb-24 sm:pb-4">
+      <div className="container max-w-full sm:max-w-2xl lg:max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+        <Button 
+          variant="ghost" 
+          onClick={() => navigate("/dashboard")} 
+          className="mb-4 h-10 sm:h-9"
+        >
+          <ArrowLeft className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">Back to Dashboard</span>
         </Button>
 
-        <div className="mb-6">
+        <div className="mb-4 sm:mb-6">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-sm text-muted-foreground">
+            <span className="text-sm sm:text-xs text-muted-foreground">
               Question {currentIndex + 1} of {questions.length}
             </span>
-            <span className="text-sm font-medium">{Math.round(progress)}%</span>
+            <span className="text-sm sm:text-xs font-medium">{Math.round(progress)}%</span>
           </div>
           <Progress value={progress} className="h-2" />
         </div>
 
         <Card>
-          <CardHeader>
-            <CardTitle className="text-xl">{currentQuestion.question}</CardTitle>
-            <CardDescription>Select the correct answer</CardDescription>
+          <CardHeader className="px-4 sm:px-6 py-4 sm:py-6">
+            <CardTitle className="text-lg sm:text-xl lg:text-2xl leading-tight">{currentQuestion.question}</CardTitle>
+            <CardDescription className="text-base sm:text-sm">Select the correct answer</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 px-4 sm:px-6">
             <RadioGroup value={selectedAnswer?.toString()} onValueChange={(val) => setSelectedAnswer(parseInt(val))}>
-              {options.map((option: string, index: number) => (
-                <div key={index} className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-accent transition-colors">
-                  <RadioGroupItem value={index.toString()} id={`option-${index}`} />
-                  <Label htmlFor={`option-${index}`} className="flex-1 cursor-pointer">
-                    {option}
-                  </Label>
-                </div>
-              ))}
+              <div className="space-y-3 sm:space-y-2">
+                {options.map((option: string, index: number) => (
+                  <div 
+                    key={index} 
+                    className="flex items-center space-x-3 p-4 sm:p-3 rounded-lg border hover:bg-accent transition-colors min-h-[56px] sm:min-h-[48px]"
+                  >
+                    <RadioGroupItem 
+                      value={index.toString()} 
+                      id={`option-${index}`}
+                      className="h-5 w-5 sm:h-4 sm:w-4" 
+                    />
+                    <Label 
+                      htmlFor={`option-${index}`} 
+                      className="flex-1 cursor-pointer text-base sm:text-sm leading-relaxed"
+                    >
+                      {option}
+                    </Label>
+                  </div>
+                ))}
+              </div>
             </RadioGroup>
 
             <div className="mt-4">
@@ -267,7 +283,7 @@ const Practice = () => {
                 variant="outline" 
                 onClick={handleExplain}
                 disabled={loadingExplanation}
-                className="w-full"
+                className="w-full h-12 sm:h-10 text-base sm:text-sm"
               >
                 {loadingExplanation ? (
                   <>
@@ -285,21 +301,67 @@ const Practice = () => {
               {showExplanation && explanation && (
                 <Collapsible open={showExplanation} onOpenChange={setShowExplanation} className="mt-4">
                   <Card className="bg-muted/50">
-                    <CardHeader className="pb-3">
+                    <CardHeader className="pb-3 px-4 py-3">
                       <CardTitle className="text-base flex items-center gap-2">
                         <Lightbulb className="h-4 w-4 text-primary" />
                         Explanation
                       </CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="px-4">
                       <p className="text-sm leading-relaxed whitespace-pre-wrap">{explanation}</p>
                     </CardContent>
                   </Card>
                 </Collapsible>
               )}
             </div>
+          </CardContent>
+        </Card>
+      </div>
 
-            <div className="flex justify-between pt-4">
+      {/* Sticky Mobile Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-card border-t shadow-lg sm:hidden z-10">
+        <div className="container px-4 py-3">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <span className="text-xs text-muted-foreground">
+              {currentIndex + 1}/{questions.length}
+            </span>
+            <span className="text-xs font-medium">{Math.round(progress)}%</span>
+          </div>
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              onClick={handlePrevious}
+              disabled={currentIndex === 0}
+              className="flex-1 h-12"
+            >
+              Previous
+            </Button>
+            
+            {currentIndex === questions.length - 1 ? (
+              <Button 
+                onClick={handleSubmit} 
+                disabled={selectedAnswer === null}
+                className="flex-1 h-12"
+              >
+                Submit Test
+              </Button>
+            ) : (
+              <Button 
+                onClick={handleNext}
+                className="flex-1 h-12"
+              >
+                Next
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Desktop Navigation */}
+      <div className="hidden sm:block container max-w-full sm:max-w-2xl lg:max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex justify-between">
               <Button
                 variant="outline"
                 onClick={handlePrevious}
