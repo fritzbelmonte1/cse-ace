@@ -72,36 +72,48 @@ const AdminUpload = () => {
     const questions: any[] = [];
     const invalidBlocks: string[] = [];
     
-    // Split by double newlines or Q: pattern for new questions
-    const questionBlocks = text.split(/(?=Q:)/i).filter(block => block.trim());
+    // Split by each new question starting with Q (case-insensitive). If not present, we'll still try to infer.
+    const questionBlocks = text.split(/(?=^\s*Q\s*[:\.])/gim).filter(block => block.trim());
     
     console.log('Found question blocks:', questionBlocks.length);
 
     for (let i = 0; i < questionBlocks.length; i++) {
       const block = questionBlocks[i];
-      const lines = block.split('\n').map(l => l.trim()).filter(l => l);
+      const rawLines = block.split('\n');
+      const lines = rawLines.map(l => l.trim()).filter(l => l);
       const question: any = {};
 
+      const isOptionLine = (l: string) => /^[ABCD][).:\-]?\s*/i.test(l);
+      const stripLabel = (label: string, l: string) => l.replace(new RegExp(`^${label}[).:\\-]?\\s*`, 'i'), '').trim();
+
       for (const line of lines) {
-        if (line.match(/^Q[:\.]?\s*/i)) {
-          question.question = line.replace(/^Q[:\.]?\s*/i, '').trim();
-        } else if (line.match(/^A[:\.]?\s*/i)) {
-          question.option_a = line.replace(/^A[:\.]?\s*/i, '').trim();
-        } else if (line.match(/^B[:\.]?\s*/i)) {
-          question.option_b = line.replace(/^B[:\.]?\s*/i, '').trim();
-        } else if (line.match(/^C[:\.]?\s*/i)) {
-          question.option_c = line.replace(/^C[:\.]?\s*/i, '').trim();
-        } else if (line.match(/^D[:\.]?\s*/i)) {
-          question.option_d = line.replace(/^D[:\.]?\s*/i, '').trim();
-        } else if (line.match(/^(Correct|Answer)[:\.]?\s*/i)) {
-          const answer = line.replace(/^(Correct|Answer)[:\.]?\s*/i, '').trim().toUpperCase();
-          question.correct_answer = answer.charAt(0); // Take first character in case they write "A)" or "A."
+        if (/^Q[.:]?\s*/i.test(line)) {
+          question.question = stripLabel('Q', line);
+        } else if (/^A[).:\-]?\s*/i.test(line)) {
+          question.option_a = stripLabel('A', line);
+        } else if (/^B[).:\-]?\s*/i.test(line)) {
+          question.option_b = stripLabel('B', line);
+        } else if (/^C[).:\-]?\s*/i.test(line)) {
+          question.option_c = stripLabel('C', line);
+        } else if (/^D[).:\-]?\s*/i.test(line)) {
+          question.option_d = stripLabel('D', line);
+        } else if (/^(Correct|Answer)[.:]?\s*/i.test(line)) {
+          const answer = line.replace(/^(Correct|Answer)[.:]?\s*/i, '').trim().toUpperCase();
+          question.correct_answer = answer.charAt(0);
+        } else {
+          // Fallback: capture first non-option/answer line as question if none found yet
+          if (!question.question && !isOptionLine(line) && !/^(Correct|Answer)/i.test(line)) {
+            question.question = line.trim();
+          }
+          // Fallback: detect correct answer if line mentions 'correct' and has A-D
+          if (!question.correct_answer) {
+            const m = line.match(/(Correct|Answer)[^A-D]*([A-D])/i);
+            if (m) question.correct_answer = m[2].toUpperCase();
+          }
         }
       }
 
-      // Validate question has all required fields
-      const hasAllFields = question.question && question.option_a && question.option_b && 
-          question.option_c && question.option_d && question.correct_answer;
+      const hasAllFields = !!(question.question && question.option_a && question.option_b && question.option_c && question.option_d && question.correct_answer);
       const hasValidAnswer = ['A', 'B', 'C', 'D'].includes(question.correct_answer);
       
       if (hasAllFields && hasValidAnswer) {
@@ -164,8 +176,28 @@ const AdminUpload = () => {
         
         console.log(`Successfully parsed ${parsedQuestions.length} questions`);
 
+        // Create a document record representing this pasted batch
+        setUploadStatus("Creating document record for pasted questions...");
+        setUploadProgress(50);
+
+        const { data: docData, error: docError } = await supabase
+          .from('documents')
+          .insert({
+            uploaded_by: user.id,
+            file_name: `pasted-questions-${Date.now()}.txt`,
+            file_path: '',
+            purpose: 'questions',
+            module,
+            processed: true,
+            processing_status: 'completed'
+          })
+          .select()
+          .maybeSingle();
+
+        if (docError || !docData) throw docError || new Error('Failed to create document record');
+
         setUploadStatus("Uploading questions to database...");
-        setUploadProgress(60);
+        setUploadProgress(70);
 
         // Insert questions directly into extracted_questions table
         const questionsToInsert = parsedQuestions.map(q => ({
@@ -176,7 +208,7 @@ const AdminUpload = () => {
           option_d: q.option_d,
           correct_answer: q.correct_answer,
           module,
-          document_id: '00000000-0000-0000-0000-000000000000', // Placeholder for manual uploads
+          document_id: docData.id,
           status: 'pending',
           confidence_score: 1.0
         }));
