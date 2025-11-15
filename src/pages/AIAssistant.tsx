@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ChatMessage } from "@/components/ChatMessage";
 import { TypingIndicator } from "@/components/TypingIndicator";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
+import { VoiceAssistant } from "@/components/VoiceAssistant";
 
 interface Message {
   role: "user" | "assistant";
@@ -25,6 +26,7 @@ const AIAssistant = () => {
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [showVoiceAssistant, setShowVoiceAssistant] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -315,7 +317,34 @@ const AIAssistant = () => {
 
           {/* Input Area */}
           <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-lg">
-            <div className="container max-w-4xl mx-auto px-4 py-4">
+            <div className="container max-w-4xl mx-auto px-4 py-4 space-y-4">
+              {/* Voice Assistant Toggle */}
+              <div className="flex items-center justify-between">
+                <Button
+                  variant={showVoiceAssistant ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowVoiceAssistant(!showVoiceAssistant)}
+                  className="gap-2"
+                >
+                  <BookOpen className="h-4 w-4" />
+                  {showVoiceAssistant ? "Hide" : "Show"} Voice Assistant
+                </Button>
+                {showVoiceAssistant && (
+                  <p className="text-xs text-muted-foreground">
+                    🎤 Voice chat is active
+                  </p>
+                )}
+              </div>
+
+              {/* Voice Assistant Card */}
+              {showVoiceAssistant && (
+                <VoiceAssistant 
+                  conversationId={conversationId || undefined}
+                  onClose={() => setShowVoiceAssistant(false)}
+                />
+              )}
+
+              {/* Text Input Form */}
               <form onSubmit={handleSubmit} className="flex gap-3">
                 <Input
                   value={input}
@@ -333,7 +362,7 @@ const AIAssistant = () => {
                   <Send className="h-4 w-4" />
                 </Button>
               </form>
-              <p className="text-xs text-muted-foreground text-center mt-2">
+              <p className="text-xs text-muted-foreground text-center">
                 AI responses are based on uploaded study materials
               </p>
             </div>
