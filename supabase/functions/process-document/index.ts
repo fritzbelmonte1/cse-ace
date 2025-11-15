@@ -168,13 +168,8 @@ serve(async (req) => {
           .from('document_chunks')
           .insert({
             document_id: documentId,
-            chunk_text: chunks[i],
-            chunk_index: i,
-            embedding: null,
-            metadata: { 
-              chunk_size: chunks[i].length,
-              total_chunks: chunks.length 
-            }
+            content: chunks[i],
+            chunk_index: i
           });
 
         if (insertError) {
