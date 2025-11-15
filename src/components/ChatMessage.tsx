@@ -1,6 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Bot, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { VoicePlayer } from "./VoicePlayer";
 
 interface Source {
   document: string;
@@ -68,9 +69,12 @@ export const ChatMessage = ({ role, content, sources, isLatest }: ChatMessagePro
           )}
         </Card>
 
-        <span className="text-xs text-muted-foreground px-2">
-          {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground px-2">
+            {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </span>
+          {!isUser && content && <VoicePlayer text={content} />}
+        </div>
       </div>
     </div>
   );
