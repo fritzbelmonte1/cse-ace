@@ -8,6 +8,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Clock, Target, Zap } from "lucide-react";
+import { Navigation } from "@/components/Navigation";
 
 const modules = [
   { id: "all", name: "Full CSE Mock Exam (All Modules)" },
@@ -98,7 +99,9 @@ export default function ExamSetup() {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-background p-6">
       <div className="max-w-4xl mx-auto space-y-6">
         <div className="text-center space-y-2">
           <h1 className="text-4xl font-bold text-foreground">Mock Exam Setup</h1>
@@ -209,5 +212,6 @@ export default function ExamSetup() {
         </div>
       </div>
     </div>
+    </>
   );
 }

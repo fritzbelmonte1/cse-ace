@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { CheckCircle2, XCircle, Clock, Award, TrendingUp, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Navigation } from "@/components/Navigation";
 
 export default function ExamResults() {
   const { examId } = useParams();
@@ -80,7 +81,9 @@ export default function ExamResults() {
   const performance = exam.question_performance || [];
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-background p-6">
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="text-center space-y-2">
@@ -237,5 +240,6 @@ export default function ExamResults() {
         </div>
       </div>
     </div>
+    </>
   );
 }

@@ -3,8 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, LogOut, Shield, Brain, TrendingUp, MessageSquare, User, BarChart, Target as TargetIcon, Layers, Users, PlayCircle } from "lucide-react";
+import { BookOpen, Brain, TrendingUp, PlayCircle, MessageSquare, Layers, Users, Target as TargetIcon } from "lucide-react";
 import { toast } from "sonner";
+import { Navigation } from "@/components/Navigation";
 
 const modules = [
   { id: "vocabulary", name: "Vocabulary", icon: BookOpen, description: "Word meanings and usage" },
@@ -74,44 +75,14 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <div>
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
+        <div className="container mx-auto px-4 py-8">
+          <div className="mb-8">
             <h1 className="text-4xl font-bold">CSE Practice Platform</h1>
             <p className="text-muted-foreground mt-2">Welcome back, {user?.email}</p>
           </div>
-          <div className="flex gap-2">
-            {isAdmin && (
-              <>
-                <Button variant="outline" onClick={() => navigate("/admin/upload")}>
-                  <Shield className="mr-2 h-4 w-4" />
-                  Admin Upload
-                </Button>
-                <Button variant="outline" onClick={() => navigate("/admin/users")}>
-                  <Users className="mr-2 h-4 w-4" />
-                  Manage Users
-                </Button>
-              </>
-            )}
-            <Button variant="outline" onClick={() => navigate("/analytics")}>
-              <BarChart className="mr-2 h-4 w-4" />
-              Analytics
-            </Button>
-            <Button variant="outline" onClick={() => navigate("/goals")}>
-              <TargetIcon className="mr-2 h-4 w-4" />
-              Goals
-            </Button>
-            <Button variant="outline" onClick={() => navigate("/profile")}>
-              <User className="mr-2 h-4 w-4" />
-              Profile
-            </Button>
-            <Button variant="outline" onClick={handleLogout}>
-              <LogOut className="mr-2 h-4 w-4" />
-              Logout
-            </Button>
-          </div>
-        </div>
 
         {inProgressExams.length > 0 && (
           <Card className="mb-6 border-primary/50 bg-primary/5">
@@ -222,6 +193,7 @@ const Dashboard = () => {
         </Card>
       </div>
     </div>
+    </>
   );
 };
 

@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { ArrowLeft, Upload, Trash2, RefreshCw, Loader2, CheckCircle2, FileUp, XCircle, Clock } from "lucide-react";
 import { ProcessingStatusBadge } from "@/components/ProcessingStatusBadge";
+import { Navigation } from "@/components/Navigation";
 
 const AdminUpload = () => {
   const navigate = useNavigate();
@@ -565,7 +566,9 @@ const AdminUpload = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted p-4">
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted p-4">
       <div className="container max-w-6xl mx-auto py-8">
         <div className="flex items-center justify-between mb-4">
           <Button variant="ghost" onClick={() => navigate("/dashboard")}>
@@ -771,6 +774,7 @@ Q: Your question?{'\n'}A: Option A{'\n'}B: Option B{'\n'}C: Option C{'\n'}D: Opt
         </Card>
       </div>
     </div>
+    </>
   );
 };
 

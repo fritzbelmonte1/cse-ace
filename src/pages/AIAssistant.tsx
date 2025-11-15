@@ -12,6 +12,7 @@ import { ChatMessage } from "@/components/ChatMessage";
 import { TypingIndicator } from "@/components/TypingIndicator";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { VoiceAssistant } from "@/components/VoiceAssistant";
+import { Navigation } from "@/components/Navigation";
 
 interface Message {
   role: "user" | "assistant";
@@ -232,8 +233,10 @@ const AIAssistant = () => {
   }
 
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen w-full">
+    <>
+      <Navigation />
+      <SidebarProvider>
+        <div className="flex min-h-screen w-full">
         <ConversationSidebar
           currentConversationId={conversationId}
           onConversationSelect={loadConversation}
@@ -370,6 +373,7 @@ const AIAssistant = () => {
         </div>
       </div>
     </SidebarProvider>
+    </>
   );
 };
 

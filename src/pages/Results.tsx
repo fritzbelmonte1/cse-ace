@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle, XCircle, Home } from "lucide-react";
+import { Navigation } from "@/components/Navigation";
 
 const Results = () => {
   const location = useLocation();
@@ -16,7 +17,9 @@ const Results = () => {
   const percentage = Math.round((score / total) * 100);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted p-4">
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted p-4">
       <div className="container max-w-4xl mx-auto py-8">
         <Card className="mb-6">
           <CardHeader className="text-center">
@@ -102,6 +105,7 @@ const Results = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 

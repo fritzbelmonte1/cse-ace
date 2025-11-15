@@ -6,9 +6,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { Navigation } from "@/components/Navigation";
 import { 
   ArrowLeft, 
-  User, 
+  User,
   TrendingUp, 
   BookOpen, 
   MessageSquare, 
@@ -174,7 +175,9 @@ const Profile = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
       {/* Header */}
       <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -551,6 +554,7 @@ const Profile = () => {
         </Tabs>
       </div>
     </div>
+    </>
   );
 };
 
