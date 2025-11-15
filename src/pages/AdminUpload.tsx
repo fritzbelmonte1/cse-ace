@@ -221,8 +221,6 @@ const AdminUpload = () => {
         const questionsToInsert = parseResult.questions.map((q) => {
           const normalize = (v?: string) => (typeof v === 'string' ? v : '');
           const validAnswer = !!q.correct_answer && /^[ABCD]$/i.test(q.correct_answer);
-          const hasAll = !!(q.question && q.option_a && q.option_b && q.option_c && q.option_d);
-          const status = hasAll && validAnswer ? 'pending' : 'invalid';
           return {
             question: normalize(q.question) || '[Missing question]',
             option_a: normalize(q.option_a),
@@ -232,7 +230,6 @@ const AdminUpload = () => {
             correct_answer: validAnswer ? q.correct_answer.toUpperCase() : '',
             module,
             document_id: docData.id,
-            status,
             confidence_score: 1.0
           };
         });
@@ -245,7 +242,7 @@ const AdminUpload = () => {
 
         setUploadProgress(100);
         toast.success(`Successfully uploaded ${parseResult.questions.length} questions`, {
-          description: parseResult.invalidBlocks?.length ? `${parseResult.invalidBlocks.length} marked as 'invalid' due to missing fields.` : undefined
+          description: parseResult.invalidBlocks?.length ? `${parseResult.invalidBlocks.length} had missing fields and were saved as 'pending' for review.` : undefined
         });
         setPastedText("");
         setUploading(false);
