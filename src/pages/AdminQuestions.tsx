@@ -9,9 +9,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { ArrowLeft, Trash2, RefreshCw, AlertCircle, CheckCircle2, Edit, Search } from "lucide-react";
+import { ArrowLeft, Trash2, RefreshCw, AlertCircle, CheckCircle2, Edit, Search, Copy } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { QuestionMergeDialog } from "@/components/QuestionMergeDialog";
+import { similarityScore } from "@/lib/utils";
 
 interface ExtractedQuestion {
   id: string;
@@ -38,6 +40,8 @@ const AdminQuestions = () => {
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [editingQuestion, setEditingQuestion] = useState<ExtractedQuestion | null>(null);
   const [modules, setModules] = useState<string[]>([]);
+  const [similarQuestions, setSimilarQuestions] = useState<ExtractedQuestion[]>([]);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
 
   useEffect(() => {
     fetchQuestions();
@@ -186,6 +190,58 @@ const AdminQuestions = () => {
       return <Badge variant="secondary">Medium ({score.toFixed(2)})</Badge>;
     } else {
       return <Badge variant="destructive">Low ({score.toFixed(2)})</Badge>;
+    }
+  };
+
+  const findSimilarQuestions = (question: ExtractedQuestion) => {
+    const SIMILARITY_THRESHOLD = 0.90;
+    const similar: ExtractedQuestion[] = [question];
+    
+    questions.forEach((q) => {
+      if (q.id !== question.id) {
+        const similarity = similarityScore(question.question, q.question);
+        if (similarity >= SIMILARITY_THRESHOLD) {
+          similar.push(q);
+        }
+      }
+    });
+    
+    if (similar.length > 1) {
+      setSimilarQuestions(similar);
+      setMergeDialogOpen(true);
+    } else {
+      toast.info("No similar questions found (90% similarity threshold)");
+    }
+  };
+
+  const handleMerge = async (
+    mergedQuestion: Partial<ExtractedQuestion>,
+    keepId: string,
+    deleteIds: string[]
+  ) => {
+    try {
+      // Update the kept question
+      const { error: updateError } = await supabase
+        .from('extracted_questions')
+        .update(mergedQuestion)
+        .eq('id', keepId);
+
+      if (updateError) throw updateError;
+
+      // Delete the duplicate questions
+      const { error: deleteError } = await supabase
+        .from('extracted_questions')
+        .delete()
+        .in('id', deleteIds);
+
+      if (deleteError) throw deleteError;
+
+      toast.success(`Merged ${deleteIds.length + 1} similar questions successfully`);
+      fetchQuestions();
+      setSimilarQuestions([]);
+    } catch (error: any) {
+      console.error('Error merging questions:', error);
+      toast.error("Failed to merge questions");
     }
   };
 
@@ -399,6 +455,14 @@ const AdminQuestions = () => {
                             </div>
                           </div>
                           <div className="flex items-center gap-2 pt-2 border-t">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => findSimilarQuestions(question)}
+                            >
+                              <Copy className="h-4 w-4 mr-2" />
+                              Find Similar
+                            </Button>
                             <Dialog>
                               <DialogTrigger asChild>
                                 <Button
@@ -550,6 +614,14 @@ const AdminQuestions = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Question Merge Dialog */}
+        <QuestionMergeDialog
+          open={mergeDialogOpen}
+          onOpenChange={setMergeDialogOpen}
+          questions={similarQuestions}
+          onMerge={handleMerge}
+        />
       </div>
     </div>
   );
