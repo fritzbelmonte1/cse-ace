@@ -83,10 +83,10 @@ export function Navigation() {
         <NavLink
           key={item.path}
           to={item.path}
-          className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors hover:bg-accent ${
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors hover:bg-accent hover:text-accent-foreground ${
             mobile ? "w-full" : ""
           }`}
-          activeClassName="bg-accent text-accent-foreground"
+          activeClassName="bg-accent text-accent-foreground font-medium"
           onClick={() => mobile && setMobileOpen(false)}
         >
           <item.icon className="h-4 w-4" />
@@ -96,15 +96,15 @@ export function Navigation() {
       
       {isAdmin && (
         <>
-          {mobile && <div className="border-t my-2" />}
+          {mobile && <div className="border-t my-3" />}
           {adminItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
-              className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors hover:bg-accent ${
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors hover:bg-accent hover:text-accent-foreground ${
                 mobile ? "w-full" : ""
               }`}
-              activeClassName="bg-accent text-accent-foreground"
+              activeClassName="bg-accent text-accent-foreground font-medium"
               onClick={() => mobile && setMobileOpen(false)}
             >
               <item.icon className="h-4 w-4" />
@@ -125,34 +125,34 @@ export function Navigation() {
     <>
     <nav className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto px-4">
-        <div className="flex h-16 items-center justify-between">
+        <div className="flex h-14 items-center justify-between gap-4">
           {/* Logo */}
           <div 
-            className="flex items-center gap-2 cursor-pointer" 
+            className="flex items-center gap-2 cursor-pointer flex-shrink-0" 
             onClick={() => navigate("/dashboard")}
           >
-            <BookOpen className="h-6 w-6 text-primary" />
-            <span className="font-bold text-lg hidden sm:inline">CSE Practice</span>
+            <BookOpen className="h-5 w-5 text-primary" />
+            <span className="font-semibold text-base hidden sm:inline">CSE Practice</span>
           </div>
 
           {/* Desktop Navigation */}
-          <div className="hidden lg:flex items-center gap-1">
+          <div className="hidden lg:flex items-center gap-0.5 flex-1 justify-center">
             <NavItems />
           </div>
 
           {/* User Menu & Mobile Toggle */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 flex-shrink-0">
             {/* User Dropdown - Desktop & Mobile */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="gap-2">
+                <Button variant="ghost" size="sm" className="gap-1.5 h-9">
                   <User className="h-4 w-4" />
-                  <span className="hidden sm:inline max-w-[150px] truncate">
+                  <span className="hidden md:inline max-w-[120px] truncate text-sm">
                     {userEmail}
                   </span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuContent align="end" className="w-56 bg-popover">
                 <DropdownMenuItem onClick={() => navigate("/profile")}>
                   <User className="mr-2 h-4 w-4" />
                   Profile
@@ -168,11 +168,11 @@ export function Navigation() {
             {/* Mobile Menu */}
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild className="lg:hidden">
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" className="h-9 w-9">
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-64">
+              <SheetContent side="right" className="w-72 bg-background">
                 <div className="flex flex-col gap-2 mt-8">
                   <NavItems mobile />
                 </div>

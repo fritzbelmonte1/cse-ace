@@ -78,8 +78,8 @@ export function BreadcrumbNav() {
   }
 
   return (
-    <div className="border-b bg-muted/30">
-      <div className="container mx-auto px-4 py-2">
+    <div className="border-b bg-muted/20">
+      <div className="container mx-auto px-4 py-1.5">
         <Breadcrumb>
           <BreadcrumbList>
             {breadcrumbs.map((crumb, index) => {
@@ -90,14 +90,14 @@ export function BreadcrumbNav() {
                 <div key={crumb.path} className="flex items-center gap-2">
                   <BreadcrumbItem>
                     {isLast ? (
-                      <BreadcrumbPage className="flex items-center gap-1.5">
+                      <BreadcrumbPage className="flex items-center gap-1.5 text-sm">
                         {isFirst && <Home className="h-3.5 w-3.5" />}
                         {crumb.label}
                       </BreadcrumbPage>
                     ) : (
                       <BreadcrumbLink
                         onClick={() => navigate(crumb.path)}
-                        className="flex items-center gap-1.5 cursor-pointer"
+                        className="flex items-center gap-1.5 cursor-pointer text-sm hover:text-foreground transition-colors"
                       >
                         {isFirst && <Home className="h-3.5 w-3.5" />}
                         {crumb.label}
