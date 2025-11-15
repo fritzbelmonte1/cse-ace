@@ -68,6 +68,42 @@ const AdminUpload = () => {
     }
   };
 
+  const parseStructuredQuestions = (text: string) => {
+    const questions: any[] = [];
+    const questionBlocks = text.split(/\n\s*\n/).filter(block => block.trim());
+
+    for (const block of questionBlocks) {
+      const lines = block.split('\n').map(l => l.trim()).filter(l => l);
+      const question: any = {};
+
+      for (const line of lines) {
+        if (line.match(/^Q:/i)) {
+          question.question = line.replace(/^Q:\s*/i, '').trim();
+        } else if (line.match(/^A:/i)) {
+          question.option_a = line.replace(/^A:\s*/i, '').trim();
+        } else if (line.match(/^B:/i)) {
+          question.option_b = line.replace(/^B:\s*/i, '').trim();
+        } else if (line.match(/^C:/i)) {
+          question.option_c = line.replace(/^C:\s*/i, '').trim();
+        } else if (line.match(/^D:/i)) {
+          question.option_d = line.replace(/^D:\s*/i, '').trim();
+        } else if (line.match(/^Correct:/i)) {
+          question.correct_answer = line.replace(/^Correct:\s*/i, '').trim().toUpperCase();
+        }
+      }
+
+      // Validate question has all required fields
+      if (question.question && question.option_a && question.option_b && 
+          question.option_c && question.option_d && question.correct_answer) {
+        if (['A', 'B', 'C', 'D'].includes(question.correct_answer)) {
+          questions.push(question);
+        }
+      }
+    }
+
+    return questions;
+  };
+
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -94,6 +130,49 @@ const AdminUpload = () => {
       if (!user) {
         toast.error("Please log in first");
         navigate("/auth");
+        return;
+      }
+
+      // Handle structured question paste - direct upload without AI extraction
+      if (purpose === "questions" && inputMethod === "paste") {
+        setUploadStatus("Parsing structured questions...");
+        setUploadProgress(30);
+
+        const parsedQuestions = parseStructuredQuestions(pastedText);
+
+        if (parsedQuestions.length === 0) {
+          toast.error("No valid questions found. Please check the format.");
+          setUploading(false);
+          return;
+        }
+
+        setUploadStatus("Uploading questions to database...");
+        setUploadProgress(60);
+
+        // Insert questions directly into extracted_questions table
+        const questionsToInsert = parsedQuestions.map(q => ({
+          question: q.question,
+          option_a: q.option_a,
+          option_b: q.option_b,
+          option_c: q.option_c,
+          option_d: q.option_d,
+          correct_answer: q.correct_answer,
+          module,
+          document_id: '00000000-0000-0000-0000-000000000000', // Placeholder for manual uploads
+          status: 'pending',
+          confidence_score: 1.0
+        }));
+
+        const { error: insertError } = await supabase
+          .from('extracted_questions')
+          .insert(questionsToInsert);
+
+        if (insertError) throw insertError;
+
+        setUploadProgress(100);
+        toast.success(`Successfully uploaded ${parsedQuestions.length} questions`);
+        setPastedText("");
+        setUploading(false);
         return;
       }
 
@@ -297,13 +376,31 @@ const AdminUpload = () => {
                 
                 <TabsContent value="paste" className="space-y-2">
                   <label className="text-sm font-medium">Paste Content</label>
-                  <Textarea
-                    value={pastedText}
-                    onChange={(e) => setPastedText(e.target.value)}
-                    placeholder="Paste your document content here..."
-                    disabled={uploading}
-                    className="min-h-[200px] font-mono text-sm"
-                  />
+                  {purpose === "questions" ? (
+                    <>
+                      <div className="text-xs text-muted-foreground mb-2 p-3 bg-muted rounded-md">
+                        <p className="font-medium mb-1">Format for structured questions:</p>
+                        <pre className="text-xs">
+Q: Your question text here?{'\n'}A: Option A text{'\n'}B: Option B text{'\n'}C: Option C text{'\n'}D: Option D text{'\n'}Correct: A{'\n\n'}Q: Next question...
+                        </pre>
+                      </div>
+                      <Textarea
+                        value={pastedText}
+                        onChange={(e) => setPastedText(e.target.value)}
+                        placeholder="Q: What is the capital of France?&#10;A: London&#10;B: Paris&#10;C: Berlin&#10;D: Madrid&#10;Correct: B&#10;&#10;Q: Next question..."
+                        disabled={uploading}
+                        className="min-h-[200px] font-mono text-sm"
+                      />
+                    </>
+                  ) : (
+                    <Textarea
+                      value={pastedText}
+                      onChange={(e) => setPastedText(e.target.value)}
+                      placeholder="Paste your document content here for RAG processing..."
+                      disabled={uploading}
+                      className="min-h-[200px] font-mono text-sm"
+                    />
+                  )}
                 </TabsContent>
               </Tabs>
 
