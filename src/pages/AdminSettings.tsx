@@ -297,18 +297,28 @@ const AdminSettings = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/admin/upload")}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <Settings className="h-6 w-6 text-primary" />
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={() => navigate("/admin/upload")}>
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Settings className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold">Admin Settings</h1>
+                <p className="text-sm text-muted-foreground">Configure ElevenLabs voice agents</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold">Admin Settings</h1>
-              <p className="text-sm text-muted-foreground">Configure ElevenLabs voice agents</p>
-            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate("/admin/questions")}>
+              Review Questions
+            </Button>
+            <Button variant="outline" onClick={() => navigate("/admin/users")}>
+              Manage Users
+            </Button>
           </div>
         </div>
 
