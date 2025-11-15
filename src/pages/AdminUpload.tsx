@@ -118,6 +118,7 @@ const AdminUpload = () => {
         }
       }
 
+      // Allow incomplete questions through, just log warnings
       const hasAllFields = question.question && question.option_a && question.option_b && question.option_c && question.option_d;
       const hasValidAnswer = question.correct_answer && /^[ABCD]$/i.test(question.correct_answer);
 
@@ -131,23 +132,20 @@ const AdminUpload = () => {
         if (!hasValidAnswer) missing.push("Correct answer");
         
         invalidBlocks.push(`Block ${i + 1}: Missing ${missing.join(", ")}`);
-        console.log(`Question ${i + 1} invalid:`, { hasAllFields, hasValidAnswer, missing, question });
-      } else {
-        questions.push(question);
-        console.log(`Question ${i + 1} parsed successfully`);
+        console.log(`Question ${i + 1} has issues:`, { hasAllFields, hasValidAnswer, missing, question });
       }
+      
+      // Add question regardless of validation issues
+      questions.push(question);
+      console.log(`Question ${i + 1} added to upload queue`);
     }
 
     if (invalidBlocks.length > 0) {
-      console.warn('Invalid question blocks:', invalidBlocks);
-      toast.error(`${invalidBlocks.length} questions could not be parsed. Please check the format and try again.`, {
+      console.warn('Questions with issues:', invalidBlocks);
+      toast.warning(`${invalidBlocks.length} questions have missing fields but will be uploaded anyway.`, {
         description: invalidBlocks.slice(0, 3).join("; "),
         duration: 6000
       });
-    }
-
-    if (questions.length === 0) {
-      return { success: false, questions: [], invalidBlocks };
     }
 
     return { success: true, questions, invalidBlocks };
@@ -189,7 +187,8 @@ const AdminUpload = () => {
 
         const parseResult = parseStructuredQuestions(pastedText);
 
-        if (!parseResult.success || parseResult.questions.length === 0) {
+        if (parseResult.questions.length === 0) {
+          toast.error("No questions could be extracted from the pasted text.");
           setUploading(false);
           return;
         }
