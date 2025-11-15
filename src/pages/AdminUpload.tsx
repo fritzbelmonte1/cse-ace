@@ -70,35 +70,51 @@ const AdminUpload = () => {
 
   const parseStructuredQuestions = (text: string) => {
     const questions: any[] = [];
-    const questionBlocks = text.split(/\n\s*\n/).filter(block => block.trim());
+    const invalidBlocks: string[] = [];
+    
+    // Split by double newlines or Q: pattern for new questions
+    const questionBlocks = text.split(/(?=Q:)/i).filter(block => block.trim());
+    
+    console.log('Found question blocks:', questionBlocks.length);
 
-    for (const block of questionBlocks) {
+    for (let i = 0; i < questionBlocks.length; i++) {
+      const block = questionBlocks[i];
       const lines = block.split('\n').map(l => l.trim()).filter(l => l);
       const question: any = {};
 
       for (const line of lines) {
-        if (line.match(/^Q:/i)) {
-          question.question = line.replace(/^Q:\s*/i, '').trim();
-        } else if (line.match(/^A:/i)) {
-          question.option_a = line.replace(/^A:\s*/i, '').trim();
-        } else if (line.match(/^B:/i)) {
-          question.option_b = line.replace(/^B:\s*/i, '').trim();
-        } else if (line.match(/^C:/i)) {
-          question.option_c = line.replace(/^C:\s*/i, '').trim();
-        } else if (line.match(/^D:/i)) {
-          question.option_d = line.replace(/^D:\s*/i, '').trim();
-        } else if (line.match(/^Correct:/i)) {
-          question.correct_answer = line.replace(/^Correct:\s*/i, '').trim().toUpperCase();
+        if (line.match(/^Q[:\.]?\s*/i)) {
+          question.question = line.replace(/^Q[:\.]?\s*/i, '').trim();
+        } else if (line.match(/^A[:\.]?\s*/i)) {
+          question.option_a = line.replace(/^A[:\.]?\s*/i, '').trim();
+        } else if (line.match(/^B[:\.]?\s*/i)) {
+          question.option_b = line.replace(/^B[:\.]?\s*/i, '').trim();
+        } else if (line.match(/^C[:\.]?\s*/i)) {
+          question.option_c = line.replace(/^C[:\.]?\s*/i, '').trim();
+        } else if (line.match(/^D[:\.]?\s*/i)) {
+          question.option_d = line.replace(/^D[:\.]?\s*/i, '').trim();
+        } else if (line.match(/^(Correct|Answer)[:\.]?\s*/i)) {
+          const answer = line.replace(/^(Correct|Answer)[:\.]?\s*/i, '').trim().toUpperCase();
+          question.correct_answer = answer.charAt(0); // Take first character in case they write "A)" or "A."
         }
       }
 
       // Validate question has all required fields
-      if (question.question && question.option_a && question.option_b && 
-          question.option_c && question.option_d && question.correct_answer) {
-        if (['A', 'B', 'C', 'D'].includes(question.correct_answer)) {
-          questions.push(question);
-        }
+      const hasAllFields = question.question && question.option_a && question.option_b && 
+          question.option_c && question.option_d && question.correct_answer;
+      const hasValidAnswer = ['A', 'B', 'C', 'D'].includes(question.correct_answer);
+      
+      if (hasAllFields && hasValidAnswer) {
+        questions.push(question);
+        console.log(`Question ${i + 1} parsed successfully`);
+      } else {
+        invalidBlocks.push(`Block ${i + 1}: Missing or invalid fields`);
+        console.log(`Question ${i + 1} invalid:`, { hasAllFields, hasValidAnswer, question });
       }
+    }
+
+    if (invalidBlocks.length > 0) {
+      console.warn('Invalid question blocks:', invalidBlocks);
     }
 
     return questions;
@@ -141,10 +157,12 @@ const AdminUpload = () => {
         const parsedQuestions = parseStructuredQuestions(pastedText);
 
         if (parsedQuestions.length === 0) {
-          toast.error("No valid questions found. Please check the format.");
+          toast.error("No valid questions found. Please check the format. Each question needs Q:, A:, B:, C:, D:, and Correct: fields. Check the console for details.");
           setUploading(false);
           return;
         }
+        
+        console.log(`Successfully parsed ${parsedQuestions.length} questions`);
 
         setUploadStatus("Uploading questions to database...");
         setUploadProgress(60);
