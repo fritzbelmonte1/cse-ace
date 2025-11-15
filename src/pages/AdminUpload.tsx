@@ -434,7 +434,7 @@ Q: Your question text here?{'\n'}A: Option A text{'\n'}B: Option B text{'\n'}C: 
                 </div>
               )}
 
-              <Button type="submit" disabled={uploading || !file}>
+              <Button type="submit" disabled={uploading || (inputMethod === "file" && !file) || (inputMethod === "paste" && !pastedText.trim())}>
                 {uploading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
