@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import Practice from "./pages/Practice";
 import Results from "./pages/Results";
 import AdminUpload from "./pages/AdminUpload";
+import AdminUsers from "./pages/AdminUsers";
 import Auth from "./pages/Auth";
 import AIAssistant from "./pages/AIAssistant";
 import Profile from "./pages/Profile";
@@ -37,12 +38,20 @@ const App = () => (
           <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
           <Route path="/goals" element={<ProtectedRoute><Goals /></ProtectedRoute>} />
           <Route
-            path="/admin/upload" 
+            path="/admin/upload"
             element={
               <ProtectedRoute requiredRole="admin">
                 <AdminUpload />
               </ProtectedRoute>
-            } 
+            }
+          />
+          <Route
+            path="/admin/users"
+            element={
+              <ProtectedRoute requiredRole="admin">
+                <AdminUsers />
+              </ProtectedRoute>
+            }
           />
             <Route path="/flashcards" element={<ProtectedRoute><Flashcards /></ProtectedRoute>} />
             <Route path="/browse-decks" element={<ProtectedRoute><BrowseDecks /></ProtectedRoute>} />
