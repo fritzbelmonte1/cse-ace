@@ -49,10 +49,11 @@ export default function ExamSetup() {
         return;
       }
 
-      // Fetch questions for the exam
+      // Fetch approved questions for the exam
       let query = supabase
         .from("extracted_questions")
         .select("*")
+        .eq("status", "approved")
         .limit(selectedTimeLimit.questions);
 
       if (module !== "all") {
@@ -62,10 +63,21 @@ export default function ExamSetup() {
       const { data: questions, error: questionsError } = await query;
 
       if (questionsError) throw questionsError;
+      
+      console.log(`Fetched ${questions?.length || 0} approved questions for exam (module: ${module})`);
+      
       if (!questions || questions.length === 0) {
-        toast.error("No questions available for this module");
+        toast.error("No approved questions available for this module", {
+          description: "Please contact an admin to add questions for this module."
+        });
         setLoading(false);
         return;
+      }
+
+      if (questions.length < selectedTimeLimit.questions) {
+        toast.warning(`Only ${questions.length} questions available`, {
+          description: `Requested ${selectedTimeLimit.questions} but found ${questions.length}`
+        });
       }
 
       // Shuffle questions

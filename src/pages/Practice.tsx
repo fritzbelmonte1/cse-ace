@@ -32,12 +32,17 @@ const Practice = () => {
           .from('extracted_questions')
           .select('*')
           .eq('module', moduleId)
+          .eq('status', 'approved')
           .limit(100);
 
         if (error) throw error;
 
+        console.log(`Fetched ${data?.length || 0} approved questions for module: ${moduleId}`);
+
         if (!data || data.length === 0) {
-          toast.error("No questions available for this module yet.");
+          toast.error("No approved questions available for this module yet.", {
+            description: "Please contact an admin to add questions for this module."
+          });
           navigate("/dashboard");
           return;
         }

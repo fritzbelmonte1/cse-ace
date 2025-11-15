@@ -245,10 +245,12 @@ const AdminUpload = () => {
       const approvedCount = questionsToInsert.filter(q => q.status === 'approved').length;
       const pendingCount = questionsToInsert.filter(q => q.status === 'pending').length;
 
-      toast.success(`AI extracted ${data.questions.length} questions!`, {
+      console.log(`handleAiParse complete: ${data.questions.length} questions extracted, ${approvedCount} approved, ${pendingCount} pending`);
+
+      toast.success(`AI extracted ${data.questions.length} questions for ${module}!`, {
         description: pendingCount > 0 
-          ? `${approvedCount} approved, ${pendingCount} pending review` 
-          : 'All questions approved and ready'
+          ? `${approvedCount} auto-approved and ready for practice, ${pendingCount} need review` 
+          : 'All auto-approved and ready for practice!'
       });
 
       setPastedText("");
@@ -364,10 +366,12 @@ const AdminUpload = () => {
           const approvedCount = questionsToInsert.filter(q => q.status === 'approved').length;
           const pendingCount = questionsToInsert.filter(q => q.status === 'pending').length;
 
-          toast.success(`Uploaded ${structuredQuestions.length} questions`, {
+          console.log(`Stored ${structuredQuestions.length} questions: ${approvedCount} approved, ${pendingCount} pending`);
+          
+          toast.success(`Uploaded ${structuredQuestions.length} questions to ${module}`, {
             description: pendingCount > 0 
-              ? `${approvedCount} approved, ${pendingCount} pending` 
-              : 'All approved'
+              ? `${approvedCount} auto-approved and ready for practice, ${pendingCount} need review` 
+              : 'All auto-approved and ready for practice!'
           });
 
           setPastedText("");
@@ -433,10 +437,12 @@ const AdminUpload = () => {
         const approvedCount = questionsToInsert.filter(q => q.status === 'approved').length;
         const pendingCount = questionsToInsert.filter(q => q.status === 'pending').length;
         
-        toast.success(`AI extracted ${aiData.questions.length} questions!`, {
+        console.log(`AI parsing complete: ${aiData.questions.length} questions extracted, ${approvedCount} approved, ${pendingCount} pending`);
+        
+        toast.success(`AI extracted ${aiData.questions.length} questions for ${module}!`, {
           description: pendingCount > 0 
-            ? `${approvedCount} approved, ${pendingCount} pending review (missing fields)` 
-            : 'All questions approved and ready for practice'
+            ? `${approvedCount} auto-approved and ready for practice, ${pendingCount} need review` 
+            : 'All auto-approved and ready for practice!'
         });
         setPastedText("");
         setUploading(false);
