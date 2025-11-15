@@ -3,8 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -13,7 +15,9 @@ import { ProcessingStatusBadge } from "@/components/ProcessingStatusBadge";
 
 const AdminUpload = () => {
   const navigate = useNavigate();
+  const [inputMethod, setInputMethod] = useState<"file" | "paste">("file");
   const [file, setFile] = useState<File | null>(null);
+  const [pastedText, setPastedText] = useState("");
   const [purpose, setPurpose] = useState<"questions" | "rag">("questions");
   const [module, setModule] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -67,8 +71,13 @@ const AdminUpload = () => {
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!file) {
+    if (inputMethod === "file" && !file) {
       toast.error("Please select a file");
+      return;
+    }
+
+    if (inputMethod === "paste" && !pastedText.trim()) {
+      toast.error("Please paste some content");
       return;
     }
 
@@ -81,10 +90,6 @@ const AdminUpload = () => {
     setUploadProgress(0);
 
     try {
-      // Step 1: Upload to storage (0-50%)
-      setUploadStatus("Uploading file to storage...");
-      setUploadProgress(10);
-
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         toast.error("Please log in first");
@@ -92,13 +97,31 @@ const AdminUpload = () => {
         return;
       }
 
-      const fileName = `public/${Date.now()}-${file.name}`;
+      let fileName: string;
+      let fileToUpload: File;
+
+      if (inputMethod === "paste") {
+        // Create a text file from pasted content
+        setUploadStatus("Creating file from pasted content...");
+        setUploadProgress(10);
+        
+        const blob = new Blob([pastedText], { type: 'text/plain' });
+        const timestamp = Date.now();
+        fileToUpload = new File([blob], `pasted-content-${timestamp}.txt`, { type: 'text/plain' });
+        fileName = `public/${timestamp}-pasted-content.txt`;
+      } else {
+        // Use uploaded file
+        setUploadStatus("Uploading file to storage...");
+        setUploadProgress(10);
+        fileToUpload = file!;
+        fileName = `public/${Date.now()}-${file!.name}`;
+      }
       
       setUploadProgress(25);
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('cse-documents')
-        .upload(fileName, file, {
-          contentType: file.type,
+        .upload(fileName, fileToUpload, {
+          contentType: fileToUpload.type,
           upsert: false
         });
 
@@ -113,7 +136,7 @@ const AdminUpload = () => {
         .from('documents')
         .insert({
           uploaded_by: user.id,
-          file_name: file.name,
+          file_name: inputMethod === "paste" ? fileToUpload.name : file!.name,
           file_path: fileName,
           purpose: purpose,
           module: module || null,
@@ -142,6 +165,7 @@ const AdminUpload = () => {
       // Reset after a brief delay
       setTimeout(() => {
         setFile(null);
+        setPastedText("");
         setPurpose("questions");
         setModule("");
         setUploadProgress(0);
@@ -220,7 +244,7 @@ const AdminUpload = () => {
         <Card className="mb-8">
           <CardHeader>
             <CardTitle>Upload Document</CardTitle>
-            <CardDescription>Upload documents for questions or RAG knowledge base</CardDescription>
+            <CardDescription>Upload documents or paste content for question extraction or RAG knowledge base</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleUpload} className="space-y-4">
@@ -255,15 +279,33 @@ const AdminUpload = () => {
                 </div>
               )}
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">File</label>
-                <Input
-                  type="file"
-                  accept=".pdf,.txt,.doc,.docx"
-                  onChange={(e) => setFile(e.target.files?.[0] || null)}
-                  disabled={uploading}
-                />
-              </div>
+              <Tabs value={inputMethod} onValueChange={(v) => setInputMethod(v as "file" | "paste")} className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="file">Upload File</TabsTrigger>
+                  <TabsTrigger value="paste">Paste Content</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="file" className="space-y-2">
+                  <label className="text-sm font-medium">File</label>
+                  <Input
+                    type="file"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    accept=".pdf,.txt,.doc,.docx"
+                    disabled={uploading}
+                  />
+                </TabsContent>
+                
+                <TabsContent value="paste" className="space-y-2">
+                  <label className="text-sm font-medium">Paste Content</label>
+                  <Textarea
+                    value={pastedText}
+                    onChange={(e) => setPastedText(e.target.value)}
+                    placeholder="Paste your document content here..."
+                    disabled={uploading}
+                    className="min-h-[200px] font-mono text-sm"
+                  />
+                </TabsContent>
+              </Tabs>
 
               {uploading && (
                 <div className="space-y-2">
