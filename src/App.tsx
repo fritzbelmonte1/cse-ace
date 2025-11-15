@@ -9,6 +9,7 @@ import Practice from "./pages/Practice";
 import Results from "./pages/Results";
 import AdminUpload from "./pages/AdminUpload";
 import AdminUsers from "./pages/AdminUsers";
+import AdminSettings from "./pages/AdminSettings";
 import Auth from "./pages/Auth";
 import AIAssistant from "./pages/AIAssistant";
 import Profile from "./pages/Profile";
@@ -50,6 +51,14 @@ const App = () => (
             element={
               <ProtectedRoute requiredRole="admin">
                 <AdminUsers />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/settings"
+            element={
+              <ProtectedRoute requiredRole="admin">
+                <AdminSettings />
               </ProtectedRoute>
             }
           />

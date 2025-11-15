@@ -137,14 +137,24 @@ export default function AdminUsers() {
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6 lg:p-8">
       <div className="max-w-6xl mx-auto space-y-6">
-        <Button
-          variant="ghost"
-          onClick={() => navigate("/dashboard")}
-          className="mb-4"
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Dashboard
-        </Button>
+        <div className="flex items-center justify-between mb-4">
+          <Button
+            variant="ghost"
+            onClick={() => navigate("/dashboard")}
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
+          </Button>
+
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate("/admin/upload")}>
+              Upload Documents
+            </Button>
+            <Button variant="outline" onClick={() => navigate("/admin/settings")}>
+              Settings
+            </Button>
+          </div>
+        </div>
 
         <Card>
           <CardHeader>
