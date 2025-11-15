@@ -116,6 +116,12 @@ export default function ExamInterface() {
     });
   };
 
+  const handlePauseExam = async () => {
+    await saveProgress();
+    toast.success("Exam paused. You can resume from the dashboard.");
+    navigate("/dashboard");
+  };
+
   const handleSubmitExam = async (autoSubmit = false) => {
     setSubmitting(true);
     try {
@@ -202,12 +208,19 @@ export default function ExamInterface() {
               Question {currentQuestionIndex + 1} of {questions.length}
             </span>
           </div>
-          {exam.exam_type !== "practice" && timeRemaining !== null && (
-            <div className={cn("flex items-center gap-2 font-mono text-2xl font-bold", getTimerColor())}>
-              <Clock className="w-5 h-5" />
-              {formatTime(timeRemaining)}
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            {exam.exam_type === "practice" && (
+              <Button variant="outline" onClick={handlePauseExam}>
+                Pause & Save
+              </Button>
+            )}
+            {exam.exam_type !== "practice" && timeRemaining !== null && (
+              <div className={cn("flex items-center gap-2 font-mono text-2xl font-bold", getTimerColor())}>
+                <Clock className="w-5 h-5" />
+                {formatTime(timeRemaining)}
+              </div>
+            )}
+          </div>
         </div>
         <Progress value={progress} className="h-1" />
       </div>

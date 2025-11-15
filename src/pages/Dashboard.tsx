@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, LogOut, Shield, Brain, TrendingUp, MessageSquare, User, BarChart, Target as TargetIcon, Layers, Users } from "lucide-react";
+import { BookOpen, LogOut, Shield, Brain, TrendingUp, MessageSquare, User, BarChart, Target as TargetIcon, Layers, Users, PlayCircle } from "lucide-react";
 import { toast } from "sonner";
 
 const modules = [
@@ -19,6 +19,7 @@ const Dashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [inProgressExams, setInProgressExams] = useState<any[]>([]);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -39,6 +40,16 @@ const Dashboard = () => {
         .maybeSingle();
       
       setIsAdmin(!!roleData);
+      
+      // Fetch in-progress exams
+      const { data: examsData } = await supabase
+        .from("mock_exams")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("status", "in_progress")
+        .order("started_at", { ascending: false });
+
+      setInProgressExams(examsData || []);
       setLoading(false);
     };
 
@@ -101,6 +112,33 @@ const Dashboard = () => {
             </Button>
           </div>
         </div>
+
+        {inProgressExams.length > 0 && (
+          <Card className="mb-6 border-primary/50 bg-primary/5">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <PlayCircle className="h-5 w-5 text-primary" />
+                Resume Your Exam
+              </CardTitle>
+              <CardDescription>You have {inProgressExams.length} exam(s) in progress</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {inProgressExams.map((exam) => (
+                <div key={exam.id} className="flex items-center justify-between p-3 bg-background rounded-lg border">
+                  <div>
+                    <p className="font-medium">{exam.module} - {exam.exam_type === "practice" ? "Practice" : exam.exam_type === "strict" ? "Strict" : "Standard"} Mode</p>
+                    <p className="text-sm text-muted-foreground">
+                      {Object.keys(exam.answers as object).length} of {exam.total_questions} questions answered
+                    </p>
+                  </div>
+                  <Button onClick={() => navigate(`/exam/${exam.id}`)}>
+                    Resume
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           {/* Mock Exam Mode Card */}
