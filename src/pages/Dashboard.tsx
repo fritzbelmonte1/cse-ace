@@ -72,10 +72,16 @@ const Dashboard = () => {
           </div>
           <div className="flex gap-2">
             {isAdmin && (
-              <Button variant="outline" onClick={() => navigate("/admin/upload")}>
-                <Shield className="mr-2 h-4 w-4" />
-                Admin Panel
-              </Button>
+              <>
+                <Button variant="outline" onClick={() => navigate("/admin/upload")}>
+                  <Shield className="mr-2 h-4 w-4" />
+                  Admin Upload
+                </Button>
+                <Button variant="outline" onClick={() => navigate("/admin/users")}>
+                  <Users className="mr-2 h-4 w-4" />
+                  Manage Users
+                </Button>
+              </>
             )}
             <Button variant="outline" onClick={() => navigate("/analytics")}>
               <BarChart className="mr-2 h-4 w-4" />
