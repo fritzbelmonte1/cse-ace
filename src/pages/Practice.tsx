@@ -26,7 +26,7 @@ const Practice = () => {
           .from('extracted_questions')
           .select('*')
           .eq('module', moduleId)
-          .limit(20);
+          .limit(100);
 
         if (error) throw error;
 
