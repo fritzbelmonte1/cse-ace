@@ -147,11 +147,19 @@ Your goal: Extract the MAXIMUM number of questions possible. When in doubt, extr
                       items: {
                         type: 'object',
                         properties: {
-                          question_text: { type: 'string' },
-                          options: { type: 'array', items: { type: 'string' } },
-                          correct_answer: { type: 'number' }
+                        question_text: { type: 'string' },
+                        options: { 
+                          type: 'array', 
+                          items: { type: 'string' },
+                          minItems: 2,
+                          maxItems: 4
                         },
-                        required: ['question_text', 'options', 'correct_answer']
+                        correct_answer: { 
+                          type: 'number',
+                          description: 'Index 0-3 of correct option, or -1 if unknown'
+                        }
+                      },
+                      required: ['question_text', 'options']
                       }
                     }
                   },
@@ -193,39 +201,76 @@ Your goal: Extract the MAXIMUM number of questions possible. When in doubt, extr
       const dedupedQuestions = Array.from(uniqueQuestions.values());
       console.log(`After deduplication: ${dedupedQuestions.length} unique questions. Validating...`);
       
-      // Validation function
-      const isValidQuestion = (q: any) => {
+      // Relaxed validation function - accept incomplete questions
+      const validateAndNormalize = (q: any) => {
         const issues: string[] = [];
+        let confidenceScore = 1.0;
         
+        // Must have question text
         if (!q.question_text || String(q.question_text).trim() === '') {
-          issues.push('empty question text');
+          return { valid: false, issues: ['empty question text'], confidenceScore: 0 };
         }
         
-        if (!Array.isArray(q.options) || q.options.length !== 4) {
-          issues.push(`invalid options count (${Array.isArray(q.options) ? q.options.length : 0}/4)`);
-        } else {
-          const emptyOptions = q.options.filter((opt: any) => !opt || String(opt).trim() === '').length;
-          if (emptyOptions > 0) {
-            issues.push(`${emptyOptions} empty options`);
+        // Normalize options: accept 2-4, pad to 4 with N/A
+        if (!Array.isArray(q.options)) {
+          return { valid: false, issues: ['no options array'], confidenceScore: 0 };
+        }
+        
+        const validOptions = q.options.filter((opt: any) => opt && String(opt).trim() !== '');
+        
+        if (validOptions.length < 2) {
+          return { valid: false, issues: ['fewer than 2 valid options'], confidenceScore: 0 };
+        }
+        
+        // Pad to exactly 4 options
+        const paddedOptions = [...validOptions];
+        while (paddedOptions.length < 4) {
+          paddedOptions.push('N/A');
+          confidenceScore -= 0.15; // Lower confidence for padded options
+        }
+        
+        // Handle correct_answer
+        let correctAnswer = q.correct_answer;
+        if (typeof correctAnswer !== 'number' || correctAnswer < 0 || correctAnswer >= validOptions.length) {
+          correctAnswer = -1; // Unknown
+          confidenceScore -= 0.25; // Lower confidence for unknown answer
+          issues.push('unknown correct answer');
+        }
+        
+        // Adjust confidence for short questions
+        if (String(q.question_text).trim().length < 20) {
+          confidenceScore -= 0.1;
+        }
+        
+        return { 
+          valid: true, 
+          issues,
+          confidenceScore: Math.max(0.1, confidenceScore),
+          normalized: {
+            question_text: String(q.question_text).trim(),
+            options: paddedOptions.slice(0, 4),
+            correct_answer: correctAnswer
           }
-        }
-        
-        if (typeof q.correct_answer !== 'number' || q.correct_answer < 0 || q.correct_answer > 3) {
-          issues.push(`invalid correct_answer index (${q.correct_answer})`);
-        }
-        
-        return { valid: issues.length === 0, issues };
+        };
       };
       
-      // Validate and categorize
+      // Validate, normalize, and categorize
       const validQuestions: any[] = [];
       const dropReasons: { [key: string]: number } = {};
       
       dedupedQuestions.forEach((q: any, index: number) => {
-        const validation = isValidQuestion(q);
+        const validation = validateAndNormalize(q);
         
-        if (validation.valid) {
-          validQuestions.push(q);
+        if (validation.valid && validation.normalized) {
+          validQuestions.push({
+            ...validation.normalized,
+            confidenceScore: validation.confidenceScore
+          });
+          
+          // Log low confidence questions
+          if (validation.confidenceScore < 0.7 && index < 5) {
+            console.log(`Question ${index + 1} accepted with confidence ${validation.confidenceScore.toFixed(2)}: ${validation.issues.join(', ')}`);
+          }
         } else {
           if (Object.keys(dropReasons).length < 5) {
             console.log(`Dropping question ${index + 1}: ${validation.issues.join(', ')}`);
@@ -246,7 +291,7 @@ Your goal: Extract the MAXIMUM number of questions possible. When in doubt, extr
         const questionsToInsert = validQuestions.map((q: any) => {
           const opts = q.options;
           const correctIdx = q.correct_answer;
-          const letters = ['A', 'B', 'C', 'D'] as const;
+          const letters = ['A', 'B', 'C', 'D', 'unknown'] as const;
           
           return {
             document_id: documentId,
@@ -255,8 +300,9 @@ Your goal: Extract the MAXIMUM number of questions possible. When in doubt, extr
             option_b: String(opts[1]),
             option_c: String(opts[2]),
             option_d: String(opts[3]),
-            correct_answer: letters[correctIdx],
-            module: String(doc.module || 'general'), // Use upload module, not AI classification
+            correct_answer: correctIdx >= 0 ? letters[correctIdx] : 'unknown',
+            module: String(doc.module || 'general'),
+            confidence_score: q.confidenceScore
           };
         });
 
