@@ -36,14 +36,12 @@ export default function AdminUsers() {
     try {
       setLoading(true);
       
-      // Get all users from profiles
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select('id');
 
       if (profilesError) throw profilesError;
 
-      // Get all admin roles
       const { data: adminRoles, error: rolesError } = await supabase
         .from('user_roles')
         .select('user_id')
@@ -53,11 +51,9 @@ export default function AdminUsers() {
 
       const adminUserIds = new Set(adminRoles?.map(r => r.user_id) || []);
 
-      // Get user emails from auth.users via RPC or edge function
-      // For now, we'll fetch from the session and show user IDs
       const usersWithRoles: UserWithRole[] = profiles?.map(profile => ({
         id: profile.id,
-        email: profile.id, // We'll show ID since we can't access auth.users directly
+        email: profile.id,
         isAdmin: adminUserIds.has(profile.id)
       })) || [];
 
@@ -79,7 +75,6 @@ export default function AdminUsers() {
       setUpdatingUserId(userId);
 
       if (currentlyAdmin) {
-        // Remove admin role
         const { error } = await supabase
           .from('user_roles')
           .delete()
@@ -93,7 +88,6 @@ export default function AdminUsers() {
           description: "Admin privileges revoked"
         });
       } else {
-        // Add admin role
         const { error } = await supabase
           .from('user_roles')
           .insert({
