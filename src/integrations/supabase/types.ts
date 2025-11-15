@@ -215,6 +215,8 @@ export type Database = {
       }
       extracted_questions: {
         Row: {
+          approved_at: string | null
+          approved_by: string | null
           confidence_score: number | null
           correct_answer: string
           created_at: string
@@ -226,8 +228,11 @@ export type Database = {
           option_c: string
           option_d: string
           question: string
+          status: string | null
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
           confidence_score?: number | null
           correct_answer: string
           created_at?: string
@@ -239,8 +244,11 @@ export type Database = {
           option_c: string
           option_d: string
           question: string
+          status?: string | null
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
           confidence_score?: number | null
           correct_answer?: string
           created_at?: string
@@ -252,6 +260,7 @@ export type Database = {
           option_c?: string
           option_d?: string
           question?: string
+          status?: string | null
         }
         Relationships: [
           {
