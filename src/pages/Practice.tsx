@@ -77,7 +77,8 @@ const Practice = () => {
     }
 
     const score = finalAnswers.reduce((acc, answer, index) => {
-      return acc + (answer === questions[index].correct_answer ? 1 : 0);
+      const correctAnswerIndex = ['A', 'B', 'C', 'D'].indexOf(questions[index].correct_answer);
+      return acc + (answer === correctAnswerIndex ? 1 : 0);
     }, 0);
 
     try {
@@ -132,7 +133,12 @@ const Practice = () => {
   }
 
   const currentQuestion = questions[currentIndex];
-  const options = JSON.parse(currentQuestion.options);
+  const options = [
+    currentQuestion.option_a,
+    currentQuestion.option_b,
+    currentQuestion.option_c,
+    currentQuestion.option_d,
+  ];
   const progress = ((currentIndex + 1) / questions.length) * 100;
 
   return (
@@ -155,7 +161,7 @@ const Practice = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl">{currentQuestion.question_text}</CardTitle>
+            <CardTitle className="text-xl">{currentQuestion.question}</CardTitle>
             <CardDescription>Select the correct answer</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
