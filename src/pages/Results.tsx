@@ -40,9 +40,15 @@ const Results = () => {
         <div className="space-y-4">
           <h2 className="text-2xl font-bold mb-4">Answer Review</h2>
           {questions?.map((question: any, index: number) => {
-            const options = JSON.parse(question.options);
+            const options = [
+              question.option_a,
+              question.option_b,
+              question.option_c,
+              question.option_d,
+            ];
             const userAnswer = answers[index];
-            const isCorrect = userAnswer === question.correct_answer;
+            const correctAnswerIndex = ['A', 'B', 'C', 'D'].indexOf(question.correct_answer);
+            const isCorrect = userAnswer === correctAnswerIndex;
 
             return (
               <Card key={index} className={isCorrect ? "border-green-500" : "border-red-500"}>
@@ -55,14 +61,14 @@ const Results = () => {
                     )}
                     <div className="flex-1">
                       <CardTitle className="text-lg">Question {index + 1}</CardTitle>
-                      <CardDescription className="mt-2">{question.question_text}</CardDescription>
+                      <CardDescription className="mt-2">{question.question}</CardDescription>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {options.map((option: string, optIndex: number) => {
                     const isUserAnswer = userAnswer === optIndex;
-                    const isCorrectAnswer = question.correct_answer === optIndex;
+                    const isCorrectAnswer = correctAnswerIndex === optIndex;
 
                     return (
                       <div
