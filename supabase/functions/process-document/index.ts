@@ -67,20 +67,24 @@ serve(async (req) => {
     }
 
     if (doc.purpose === 'questions') {
-      // Batched extraction for large files
+      // Batched extraction for large files with overlap
       const CHUNK_SIZE = 45000; // ~45k characters per chunk
+      const CHUNK_OVERLAP = 10000; // 10k character overlap to capture questions at boundaries
       const sanitizedContent = sanitizeText(fileContent);
-      const totalChunks = Math.ceil(sanitizedContent.length / CHUNK_SIZE);
+      const totalChunks = Math.ceil(sanitizedContent.length / (CHUNK_SIZE - CHUNK_OVERLAP)) + 1;
       
       console.log(`Processing ${sanitizedContent.length} chars in ${totalChunks} chunks`);
       
       const allQuestions: any[] = [];
       
-      // Process each chunk
+      // Process each chunk with overlap
       for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-        const start = chunkIndex * CHUNK_SIZE;
+        const start = Math.max(0, chunkIndex * (CHUNK_SIZE - CHUNK_OVERLAP));
         const end = Math.min(start + CHUNK_SIZE, sanitizedContent.length);
         const chunk = sanitizedContent.slice(start, end);
+        
+        // Skip if chunk is too small (last overlapping chunk)
+        if (chunk.length < 1000) continue;
         
         console.log(`Processing chunk ${chunkIndex + 1}/${totalChunks} (${chunk.length} chars)`);
         
@@ -96,7 +100,34 @@ serve(async (req) => {
             messages: [
               {
                 role: 'system',
-                content: 'Extract multiple-choice questions from the text. For each question, identify: question text, 4 options (A-D), correct answer index (0-3). Return as JSON array. Extract ALL questions you find.'
+                content: `You are extracting multiple-choice questions from an educational test preparation document.
+
+CRITICAL: Extract EVERY question you find, even if formatting is inconsistent or information is incomplete.
+
+Common formats to look for:
+1. Numbered questions: "1.", "2.", "Question 1:", "Q1:", etc.
+2. Answer choices marked as: "A.", "B.", "C.", "D." or "(A)", "(B)", "(C)", "(D)" or "a)", "b)", "c)", "d)"
+3. Questions followed by 2-4 answer options
+4. Answer keys (correct answers listed separately at end of sections)
+5. Questions with explanations, rationales, or hints below them
+6. Multi-part questions or compound questions
+7. Fill-in-the-blank questions converted to multiple choice
+
+Extraction rules:
+- Extract the COMPLETE question text, including any context or setup
+- Extract ALL answer options you find (even if fewer than 4)
+- If you find an answer key section, match answers to their questions
+- If correct answer is unclear, still extract the question
+- Include page numbers or question numbers if visible
+- Handle questions that span multiple lines
+- Look for patterns like "The answer is..." or "Correct: A"
+
+For each question extract:
+- question_text: The full question text (required)
+- options: Array of answer choices - extract 2-4 options, pad to 4 with "N/A" if needed
+- correct_answer: Index 0-3 of correct option (use -1 if unknown)
+
+Your goal: Extract the MAXIMUM number of questions possible. When in doubt, extract it.`
               },
               {
                 role: 'user',
