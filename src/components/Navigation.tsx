@@ -24,6 +24,7 @@ import {
   Settings,
   Layers,
   MessageSquare,
+  FolderSync,
 } from "lucide-react";
 import { toast } from "sonner";
 import { NavLink } from "./NavLink";
@@ -73,6 +74,7 @@ export function Navigation() {
   const adminItems = [
     { path: "/admin/upload", label: "Admin Upload", icon: Shield },
     { path: "/admin/questions", label: "Questions", icon: BookOpen },
+    { path: "/admin/recategorize", label: "Recategorize", icon: FolderSync },
     { path: "/admin/users", label: "Users", icon: Users },
     { path: "/admin/settings", label: "Settings", icon: Settings },
   ];

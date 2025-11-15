@@ -580,6 +580,9 @@ const AdminUpload = () => {
             <Button variant="outline" onClick={() => navigate("/admin/questions")}>
               Review Questions
             </Button>
+            <Button variant="outline" onClick={() => navigate("/admin/recategorize")}>
+              Bulk Recategorize
+            </Button>
             <Button variant="outline" onClick={() => navigate("/admin/users")}>
               Manage Users
             </Button>
