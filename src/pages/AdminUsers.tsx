@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Shield, ShieldOff, Loader2 } from "lucide-react";
+import { ArrowLeft, Shield, ShieldOff, Loader2, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import {
   Table,
@@ -27,6 +28,7 @@ export default function AdminUsers() {
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     fetchUsers();
@@ -74,6 +76,17 @@ export default function AdminUsers() {
       setLoading(false);
     }
   };
+
+  // Filter users based on search query (max 200 chars)
+  const filteredUsers = users.filter((user) => {
+    const sanitizedQuery = searchQuery.trim().toLowerCase().slice(0, 200);
+    if (!sanitizedQuery) return true;
+    
+    return (
+      user.email.toLowerCase().includes(sanitizedQuery) ||
+      user.id.toLowerCase().includes(sanitizedQuery)
+    );
+  });
 
   const toggleAdminRole = async (userId: string, currentlyAdmin: boolean) => {
     try {
@@ -141,13 +154,31 @@ export default function AdminUsers() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="mb-6">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Search by email or user ID..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  maxLength={200}
+                  className="pl-10"
+                />
+              </div>
+              {searchQuery && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  Found {filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''}
+                </p>
+              )}
+            </div>
             {loading ? (
               <div className="flex justify-center py-8">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
-            ) : users.length === 0 ? (
+            ) : filteredUsers.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">
-                No users found
+                {searchQuery ? "No users match your search" : "No users found"}
               </p>
             ) : (
               <Table>
@@ -160,7 +191,7 @@ export default function AdminUsers() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {users.map((user) => (
+                  {filteredUsers.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell className="font-medium">
                         {user.email}
