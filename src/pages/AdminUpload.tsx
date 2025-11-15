@@ -76,6 +76,11 @@ const AdminUpload = () => {
     const questionBlocks = text.split(/(?=^\s*Q\s*[:\.])/gim).filter(block => block.trim());
     
     console.log('Found question blocks:', questionBlocks.length);
+    
+    if (questionBlocks.length === 0) {
+      toast.error("No questions found. Please follow the format: Q: Question text, A. Option A, B. Option B, C. Option C, D. Option D, Correct: A");
+      return { success: false, questions: [], invalidBlocks: ["No valid question format detected"] };
+    }
 
     for (let i = 0; i < questionBlocks.length; i++) {
       const block = questionBlocks[i];
@@ -113,23 +118,39 @@ const AdminUpload = () => {
         }
       }
 
-      const hasAllFields = !!(question.question && question.option_a && question.option_b && question.option_c && question.option_d && question.correct_answer);
-      const hasValidAnswer = ['A', 'B', 'C', 'D'].includes(question.correct_answer);
-      
-      if (hasAllFields && hasValidAnswer) {
+      const hasAllFields = question.question && question.option_a && question.option_b && question.option_c && question.option_d;
+      const hasValidAnswer = question.correct_answer && /^[ABCD]$/i.test(question.correct_answer);
+
+      if (!hasAllFields || !hasValidAnswer) {
+        const missing = [];
+        if (!question.question) missing.push("Question text");
+        if (!question.option_a) missing.push("Option A");
+        if (!question.option_b) missing.push("Option B");
+        if (!question.option_c) missing.push("Option C");
+        if (!question.option_d) missing.push("Option D");
+        if (!hasValidAnswer) missing.push("Correct answer");
+        
+        invalidBlocks.push(`Block ${i + 1}: Missing ${missing.join(", ")}`);
+        console.log(`Question ${i + 1} invalid:`, { hasAllFields, hasValidAnswer, missing, question });
+      } else {
         questions.push(question);
         console.log(`Question ${i + 1} parsed successfully`);
-      } else {
-        invalidBlocks.push(`Block ${i + 1}: Missing or invalid fields`);
-        console.log(`Question ${i + 1} invalid:`, { hasAllFields, hasValidAnswer, question });
       }
     }
 
     if (invalidBlocks.length > 0) {
       console.warn('Invalid question blocks:', invalidBlocks);
+      toast.error(`${invalidBlocks.length} questions could not be parsed. Please check the format and try again.`, {
+        description: invalidBlocks.slice(0, 3).join("; "),
+        duration: 6000
+      });
     }
 
-    return questions;
+    if (questions.length === 0) {
+      return { success: false, questions: [], invalidBlocks };
+    }
+
+    return { success: true, questions, invalidBlocks };
   };
 
   const handleUpload = async (e: React.FormEvent) => {
@@ -166,15 +187,14 @@ const AdminUpload = () => {
         setUploadStatus("Parsing structured questions...");
         setUploadProgress(30);
 
-        const parsedQuestions = parseStructuredQuestions(pastedText);
+        const parseResult = parseStructuredQuestions(pastedText);
 
-        if (parsedQuestions.length === 0) {
-          toast.error("No valid questions found. Please check the format. Each question needs Q:, A:, B:, C:, D:, and Correct: fields. Check the console for details.");
+        if (!parseResult.success || parseResult.questions.length === 0) {
           setUploading(false);
           return;
         }
         
-        console.log(`Successfully parsed ${parsedQuestions.length} questions`);
+        console.log(`Successfully parsed ${parseResult.questions.length} questions`);
 
         // Create a document record representing this pasted batch
         setUploadStatus("Creating document record for pasted questions...");
@@ -200,7 +220,7 @@ const AdminUpload = () => {
         setUploadProgress(70);
 
         // Insert questions directly into extracted_questions table
-        const questionsToInsert = parsedQuestions.map(q => ({
+        const questionsToInsert = parseResult.questions.map(q => ({
           question: q.question,
           option_a: q.option_a,
           option_b: q.option_b,
@@ -220,7 +240,7 @@ const AdminUpload = () => {
         if (insertError) throw insertError;
 
         setUploadProgress(100);
-        toast.success(`Successfully uploaded ${parsedQuestions.length} questions`);
+        toast.success(`Successfully uploaded ${parseResult.questions.length} questions`);
         setPastedText("");
         setUploading(false);
         return;
