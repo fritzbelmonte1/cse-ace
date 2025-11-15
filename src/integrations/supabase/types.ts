@@ -177,31 +177,37 @@ export type Database = {
       documents: {
         Row: {
           created_at: string
+          error_message: string | null
           file_name: string
           file_path: string
           id: string
           module: string | null
           processed: boolean | null
+          processing_status: string | null
           purpose: string
           uploaded_by: string | null
         }
         Insert: {
           created_at?: string
+          error_message?: string | null
           file_name: string
           file_path: string
           id?: string
           module?: string | null
           processed?: boolean | null
+          processing_status?: string | null
           purpose: string
           uploaded_by?: string | null
         }
         Update: {
           created_at?: string
+          error_message?: string | null
           file_name?: string
           file_path?: string
           id?: string
           module?: string | null
           processed?: boolean | null
+          processing_status?: string | null
           purpose?: string
           uploaded_by?: string | null
         }

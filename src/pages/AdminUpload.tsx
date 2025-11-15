@@ -6,8 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { ArrowLeft, Upload, Trash2, RefreshCw, Loader2, CheckCircle2, FileUp } from "lucide-react";
+import { ArrowLeft, Upload, Trash2, RefreshCw, Loader2, CheckCircle2, FileUp, XCircle, Clock } from "lucide-react";
+import { ProcessingStatusBadge } from "@/components/ProcessingStatusBadge";
 
 const AdminUpload = () => {
   const navigate = useNavigate();
@@ -22,6 +24,27 @@ const AdminUpload = () => {
 
   useEffect(() => {
     fetchDocuments();
+
+    // Set up realtime subscription for document updates
+    const channel = supabase
+      .channel('documents-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'documents'
+        },
+        (payload) => {
+          console.log('Document update:', payload);
+          fetchDocuments();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchDocuments = async () => {
@@ -94,7 +117,8 @@ const AdminUpload = () => {
           file_path: fileName,
           purpose: purpose,
           module: module || null,
-          processed: false
+          processed: false,
+          processing_status: 'pending'
         })
         .select()
         .single();
@@ -309,11 +333,17 @@ const AdminUpload = () => {
               <div className="space-y-2">
                 {documents.map((doc) => (
                   <div key={doc.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
+                    <div className="flex-1">
                       <p className="font-medium">{doc.file_name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {doc.purpose} • {doc.module || 'N/A'} • {doc.processed ? 'Processed' : 'Processing...'}
-                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="text-sm text-muted-foreground">
+                          {doc.purpose} • {doc.module || 'N/A'}
+                        </p>
+                        <ProcessingStatusBadge 
+                          status={doc.processing_status || 'pending'} 
+                          errorMessage={doc.error_message}
+                        />
+                      </div>
                     </div>
                     <Button variant="destructive" size="icon" onClick={() => handleDelete(doc.id)}>
                       <Trash2 className="h-4 w-4" />
