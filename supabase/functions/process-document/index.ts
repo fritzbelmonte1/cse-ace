@@ -130,25 +130,26 @@ serve(async (req) => {
       if (toolCall) {
         const { questions } = JSON.parse(toolCall.function.arguments);
         
-        // Insert questions mapped to existing schema (option_a..d, correct_answer as text)
+        // Insert questions mapped to existing schema (option_a..d, correct_answer as A/B/C/D)
         const questionsToInsert = questions.map((q: any) => {
           const opts = Array.isArray(q.options) ? q.options : [];
-          const optionA = opts[0] ?? '';
-          const optionB = opts[1] ?? '';
-          const optionC = opts[2] ?? '';
-          const optionD = opts[3] ?? '';
-          const correctIdx = typeof q.correct_answer === 'number' ? q.correct_answer : 0;
-          const correctAnswerText = opts[correctIdx] ?? '';
+          const optionA = String(opts[0] ?? '');
+          const optionB = String(opts[1] ?? '');
+          const optionC = String(opts[2] ?? '');
+          const optionD = String(opts[3] ?? '');
+          const correctIdx = typeof q.correct_answer === 'number' && q.correct_answer >= 0 && q.correct_answer <= 3 ? q.correct_answer : 0;
+          const letters = ['A','B','C','D'] as const;
+          const correctLetter = letters[correctIdx];
 
           return {
             document_id: documentId,
-            question: q.question_text,
+            question: String(q.question_text ?? ''),
             option_a: optionA,
             option_b: optionB,
             option_c: optionC,
             option_d: optionD,
-            correct_answer: correctAnswerText,
-            module: q.module || doc.module || 'general',
+            correct_answer: correctLetter,
+            module: String(q.module || doc.module || 'general'),
           };
         });
 
