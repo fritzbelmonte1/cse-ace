@@ -36,12 +36,16 @@ export default function AdminUsers() {
     try {
       setLoading(true);
       
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id');
+      // Fetch user emails from edge function
+      const { data: emailData, error: emailError } = await supabase.functions.invoke('get-user-emails');
 
-      if (profilesError) throw profilesError;
+      if (emailError) throw emailError;
 
+      const userEmails = new Map<string, string>(
+        (emailData.users as Array<{ id: string; email: string }>).map((u) => [u.id, u.email])
+      );
+
+      // Get all admin roles
       const { data: adminRoles, error: rolesError } = await supabase
         .from('user_roles')
         .select('user_id')
@@ -51,11 +55,12 @@ export default function AdminUsers() {
 
       const adminUserIds = new Set(adminRoles?.map(r => r.user_id) || []);
 
-      const usersWithRoles: UserWithRole[] = profiles?.map(profile => ({
-        id: profile.id,
-        email: profile.id,
-        isAdmin: adminUserIds.has(profile.id)
-      })) || [];
+      // Combine email data with admin status
+      const usersWithRoles: UserWithRole[] = Array.from(userEmails.entries()).map(([id, email]) => ({
+        id,
+        email,
+        isAdmin: adminUserIds.has(id)
+      }));
 
       setUsers(usersWithRoles);
     } catch (error) {
@@ -148,6 +153,7 @@ export default function AdminUsers() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Email</TableHead>
                     <TableHead>User ID</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -156,7 +162,10 @@ export default function AdminUsers() {
                 <TableBody>
                   {users.map((user) => (
                     <TableRow key={user.id}>
-                      <TableCell className="font-mono text-sm">
+                      <TableCell className="font-medium">
+                        {user.email}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
                         {user.id}
                       </TableCell>
                       <TableCell>
