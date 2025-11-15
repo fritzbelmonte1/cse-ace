@@ -8,8 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
 import { toast } from "sonner";
-import { Clock, Flag, Loader2 } from "lucide-react";
+import { Clock, Flag, Loader2, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function ExamInterface() {
@@ -198,37 +199,42 @@ export default function ExamInterface() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-20 sm:pb-0">
       {/* Header */}
       <div className="border-b bg-card sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h2 className="text-lg font-semibold">Mock Exam - {exam.module}</h2>
-            <span className="text-sm text-muted-foreground">
-              Question {currentQuestionIndex + 1} of {questions.length}
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            {exam.exam_type === "practice" && (
-              <Button variant="outline" onClick={handlePauseExam}>
-                Pause & Save
-              </Button>
-            )}
-            {exam.exam_type !== "practice" && timeRemaining !== null && (
-              <div className={cn("flex items-center gap-2 font-mono text-2xl font-bold", getTimerColor())}>
-                <Clock className="w-5 h-5" />
-                {formatTime(timeRemaining)}
-              </div>
-            )}
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
+              <h2 className="text-base sm:text-lg font-semibold truncate">
+                <span className="hidden sm:inline">Mock Exam - </span>
+                {exam.module}
+              </h2>
+              <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
+                {currentQuestionIndex + 1}/{questions.length}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 sm:gap-3">
+              {exam.exam_type === "practice" && (
+                <Button variant="outline" onClick={handlePauseExam} size="sm" className="hidden sm:flex">
+                  Pause & Save
+                </Button>
+              )}
+              {exam.exam_type !== "practice" && timeRemaining !== null && (
+                <div className={cn("flex items-center gap-1 sm:gap-2 font-mono text-lg sm:text-2xl font-bold", getTimerColor())}>
+                  <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
+                  {formatTime(timeRemaining)}
+                </div>
+              )}
+            </div>
           </div>
         </div>
         <Progress value={progress} className="h-1" />
       </div>
 
-      <div className="container mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Question Navigator */}
-          <Card className="lg:col-span-1 h-fit">
+      <div className="container mx-auto px-4 py-4 sm:py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
+          {/* Desktop Question Navigator */}
+          <Card className="hidden lg:block lg:col-span-1 h-fit">
             <CardContent className="p-4">
               <h3 className="font-semibold mb-3">Questions</h3>
               <div className="grid grid-cols-5 gap-2">
@@ -242,7 +248,7 @@ export default function ExamInterface() {
                     }}
                     disabled={isStrictMode && index < currentQuestionIndex}
                     className={cn(
-                      "aspect-square rounded border-2 text-sm font-semibold transition-colors",
+                      "aspect-square rounded border-2 text-sm font-semibold transition-colors min-h-[44px]",
                       index === currentQuestionIndex && "ring-2 ring-primary ring-offset-2",
                       answers[index] && "bg-green-100 border-green-600 text-green-900 dark:bg-green-900/20 dark:text-green-100",
                       markedForReview.has(index) && "bg-yellow-100 border-yellow-600 text-yellow-900 dark:bg-yellow-900/20 dark:text-yellow-100",
@@ -273,20 +279,27 @@ export default function ExamInterface() {
 
           {/* Question Area */}
           <Card className="lg:col-span-3">
-            <CardContent className="p-6 space-y-6">
+            <CardContent className="p-4 sm:p-6 space-y-4 sm:space-y-6">
               <div>
-                <h3 className="text-xl font-semibold mb-4">
+                <h3 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">
                   Question {currentQuestionIndex + 1}
                 </h3>
-                <p className="text-lg">{currentQuestion.question}</p>
+                <p className="text-base sm:text-lg leading-relaxed">{currentQuestion.question}</p>
               </div>
 
               <RadioGroup value={answers[currentQuestionIndex] || ""} onValueChange={handleAnswerChange}>
                 <div className="space-y-3">
                   {["option_a", "option_b", "option_c", "option_d"].map((optionKey) => (
-                    <div key={optionKey} className="flex items-start space-x-3 border rounded-lg p-4 hover:bg-accent transition-colors">
-                      <RadioGroupItem value={optionKey.split("_")[1].toUpperCase()} id={optionKey} className="mt-1" />
-                      <Label htmlFor={optionKey} className="flex-1 cursor-pointer">
+                    <div 
+                      key={optionKey} 
+                      className="flex items-start space-x-3 border rounded-lg p-4 hover:bg-accent transition-colors min-h-[56px] sm:min-h-[48px]"
+                    >
+                      <RadioGroupItem 
+                        value={optionKey.split("_")[1].toUpperCase()} 
+                        id={optionKey} 
+                        className="mt-1 h-5 w-5 sm:h-4 sm:w-4" 
+                      />
+                      <Label htmlFor={optionKey} className="flex-1 cursor-pointer text-base sm:text-sm leading-relaxed">
                         <span className="font-semibold mr-2">{optionKey.split("_")[1].toUpperCase()}.</span>
                         {currentQuestion[optionKey]}
                       </Label>
@@ -300,14 +313,16 @@ export default function ExamInterface() {
                   id="mark-review"
                   checked={markedForReview.has(currentQuestionIndex)}
                   onCheckedChange={handleMarkForReview}
+                  className="h-5 w-5 sm:h-4 sm:w-4"
                 />
-                <Label htmlFor="mark-review" className="flex items-center gap-2 cursor-pointer">
+                <Label htmlFor="mark-review" className="flex items-center gap-2 cursor-pointer text-base sm:text-sm">
                   <Flag className="w-4 h-4" />
                   Mark for Review
                 </Label>
               </div>
 
-              <div className="flex justify-between pt-4">
+              {/* Desktop Navigation */}
+              <div className="hidden sm:flex justify-between pt-4">
                 <Button
                   variant="outline"
                   onClick={() => setCurrentQuestionIndex(prev => prev - 1)}
@@ -329,6 +344,98 @@ export default function ExamInterface() {
               </div>
             </CardContent>
           </Card>
+        </div>
+      </div>
+
+      {/* Mobile Bottom Navigation with Question Navigator */}
+      <div className="fixed bottom-0 left-0 right-0 bg-card border-t shadow-lg lg:hidden z-20">
+        <div className="container px-4 py-3">
+          <div className="flex items-center gap-3 mb-3">
+            <Drawer>
+              <DrawerTrigger asChild>
+                <Button variant="outline" size="sm" className="flex-1">
+                  <Menu className="w-4 h-4 mr-2" />
+                  Questions ({Object.keys(answers).length}/{questions.length})
+                </Button>
+              </DrawerTrigger>
+              <DrawerContent>
+                <DrawerHeader>
+                  <DrawerTitle>Question Navigator</DrawerTitle>
+                </DrawerHeader>
+                <div className="p-4">
+                  <div className="grid grid-cols-6 sm:grid-cols-8 gap-2 mb-4">
+                    {questions.map((_: any, index: number) => (
+                      <button
+                        key={index}
+                        onClick={() => {
+                          if (!isStrictMode || index > currentQuestionIndex) {
+                            setCurrentQuestionIndex(index);
+                          }
+                        }}
+                        disabled={isStrictMode && index < currentQuestionIndex}
+                        className={cn(
+                          "aspect-square rounded border-2 text-sm font-semibold transition-colors min-h-[44px] min-w-[44px]",
+                          index === currentQuestionIndex && "ring-2 ring-primary ring-offset-2",
+                          answers[index] && "bg-green-100 border-green-600 text-green-900 dark:bg-green-900/20 dark:text-green-100",
+                          markedForReview.has(index) && "bg-yellow-100 border-yellow-600 text-yellow-900 dark:bg-yellow-900/20 dark:text-yellow-100",
+                          !answers[index] && !markedForReview.has(index) && "border-border hover:bg-accent",
+                          isStrictMode && index < currentQuestionIndex && "opacity-50 cursor-not-allowed"
+                        )}
+                      >
+                        {index + 1}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded border-2 bg-green-100 border-green-600 dark:bg-green-900/20" />
+                      <span>Answered</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded border-2 bg-yellow-100 border-yellow-600 dark:bg-yellow-900/20" />
+                      <span>Review</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded border-2 border-border" />
+                      <span>Not Answered</span>
+                    </div>
+                  </div>
+                </div>
+              </DrawerContent>
+            </Drawer>
+            
+            {exam.exam_type === "practice" && (
+              <Button variant="outline" size="sm" onClick={handlePauseExam}>
+                Pause
+              </Button>
+            )}
+          </div>
+          
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setCurrentQuestionIndex(prev => prev - 1)}
+              disabled={currentQuestionIndex === 0 || isStrictMode}
+              className="flex-1 h-12"
+            >
+              Previous
+            </Button>
+            {currentQuestionIndex === questions.length - 1 ? (
+              <Button 
+                onClick={() => setShowSubmitDialog(true)} 
+                className="flex-1 h-12"
+              >
+                Submit
+              </Button>
+            ) : (
+              <Button 
+                onClick={() => setCurrentQuestionIndex(prev => prev + 1)}
+                className="flex-1 h-12"
+              >
+                Next
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
