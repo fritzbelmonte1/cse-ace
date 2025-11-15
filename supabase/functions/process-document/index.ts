@@ -67,153 +67,181 @@ serve(async (req) => {
     }
 
     if (doc.purpose === 'questions') {
-      // Extract questions using AI
-      const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
-          messages: [
-            {
-              role: 'system',
-              content: 'Extract multiple-choice questions from the text. For each question, identify: question text, 4 options (A-D), correct answer index (0-3), explanation, difficulty (easy/medium/hard), and module category (vocabulary/analogy/reading/numerical/clerical). Return as JSON array.'
-            },
-            {
-              role: 'user',
-              content: sanitizeText(fileContent.slice(0, 50000)) // Sanitize and limit to 50k chars
-            }
-          ],
-          tools: [{
-            type: 'function',
-            function: {
-              name: 'extract_questions',
-              description: 'Extract questions from document',
-              parameters: {
-                type: 'object',
-                properties: {
-                  questions: {
-                    type: 'array',
-                    items: {
-                      type: 'object',
-                      properties: {
-                        question_text: { type: 'string' },
-                        options: { type: 'array', items: { type: 'string' } },
-                        correct_answer: { type: 'number' },
-                        explanation: { type: 'string' },
-                        difficulty: { type: 'string', enum: ['easy', 'medium', 'hard'] },
-                        module: { type: 'string' }
-                      },
-                      required: ['question_text', 'options', 'correct_answer', 'module']
-                    }
-                  }
-                },
-                required: ['questions']
-              }
-            }
-          }],
-          tool_choice: { type: 'function', function: { name: 'extract_questions' } }
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('AI error:', errorText);
-        throw new Error('AI processing failed');
-      }
-
-      const aiData = await response.json();
-      const toolCall = aiData.choices[0]?.message?.tool_calls?.[0];
+      // Batched extraction for large files
+      const CHUNK_SIZE = 45000; // ~45k characters per chunk
+      const sanitizedContent = sanitizeText(fileContent);
+      const totalChunks = Math.ceil(sanitizedContent.length / CHUNK_SIZE);
       
-      if (toolCall) {
-        const { questions } = JSON.parse(toolCall.function.arguments);
+      console.log(`Processing ${sanitizedContent.length} chars in ${totalChunks} chunks`);
+      
+      const allQuestions: any[] = [];
+      
+      // Process each chunk
+      for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+        const start = chunkIndex * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, sanitizedContent.length);
+        const chunk = sanitizedContent.slice(start, end);
         
-        console.log(`AI extracted ${questions.length} questions. Validating...`);
+        console.log(`Processing chunk ${chunkIndex + 1}/${totalChunks} (${chunk.length} chars)`);
         
-        // Validation function
-        const isValidQuestion = (q: any) => {
-          const issues: string[] = [];
-          
-          if (!q.question_text || String(q.question_text).trim() === '') {
-            issues.push('empty question text');
-          }
-          
-          if (!Array.isArray(q.options) || q.options.length !== 4) {
-            issues.push(`invalid options count (${Array.isArray(q.options) ? q.options.length : 0}/4)`);
-          } else {
-            const emptyOptions = q.options.filter((opt: any) => !opt || String(opt).trim() === '').length;
-            if (emptyOptions > 0) {
-              issues.push(`${emptyOptions} empty options`);
-            }
-          }
-          
-          if (typeof q.correct_answer !== 'number' || q.correct_answer < 0 || q.correct_answer > 3) {
-            issues.push(`invalid correct_answer index (${q.correct_answer})`);
-          }
-          
-          return { valid: issues.length === 0, issues };
-        };
-        
-        // Validate and categorize
-        const validQuestions: any[] = [];
-        const dropReasons: { [key: string]: number } = {};
-        
-        questions.forEach((q: any, index: number) => {
-          const validation = isValidQuestion(q);
-          
-          if (validation.valid) {
-            validQuestions.push(q);
-          } else {
-            if (Object.keys(dropReasons).length < 5) {
-              console.log(`Dropping question ${index + 1}: ${validation.issues.join(', ')}`);
-            }
-            
-            validation.issues.forEach(issue => {
-              dropReasons[issue] = (dropReasons[issue] || 0) + 1;
-            });
-          }
+        // Extract questions using AI
+        const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'google/gemini-2.5-flash',
+            messages: [
+              {
+                role: 'system',
+                content: 'Extract multiple-choice questions from the text. For each question, identify: question text, 4 options (A-D), correct answer index (0-3). Return as JSON array. Extract ALL questions you find.'
+              },
+              {
+                role: 'user',
+                content: chunk
+              }
+            ],
+            tools: [{
+              type: 'function',
+              function: {
+                name: 'extract_questions',
+                description: 'Extract questions from document',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    questions: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          question_text: { type: 'string' },
+                          options: { type: 'array', items: { type: 'string' } },
+                          correct_answer: { type: 'number' }
+                        },
+                        required: ['question_text', 'options', 'correct_answer']
+                      }
+                    }
+                  },
+                  required: ['questions']
+                }
+              }
+            }],
+            tool_choice: { type: 'function', function: { name: 'extract_questions' } }
+          })
         });
-        
-        console.log(`Validation complete: ${validQuestions.length} valid, ${questions.length - validQuestions.length} dropped`);
-        if (Object.keys(dropReasons).length > 0) {
-          console.log('Drop reasons:', JSON.stringify(dropReasons, null, 2));
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`AI error on chunk ${chunkIndex + 1}:`, errorText);
+          continue; // Skip failed chunks
         }
+
+        const aiData = await response.json();
+        const toolCall = aiData.choices[0]?.message?.tool_calls?.[0];
         
-        if (validQuestions.length > 0) {
-          const questionsToInsert = validQuestions.map((q: any) => {
-            const opts = q.options;
-            const correctIdx = q.correct_answer;
-            const letters = ['A', 'B', 'C', 'D'] as const;
-            
-            return {
-              document_id: documentId,
-              question: String(q.question_text),
-              option_a: String(opts[0]),
-              option_b: String(opts[1]),
-              option_c: String(opts[2]),
-              option_d: String(opts[3]),
-              correct_answer: letters[correctIdx],
-              module: String(q.module || doc.module || 'general'),
-            };
-          });
-
-          const { error: insertError } = await supabase
-            .from('extracted_questions')
-            .insert(questionsToInsert);
-
-          if (insertError) {
-            console.error('Insert error:', insertError);
-            throw insertError;
-          }
-
-          console.log(`Successfully inserted ${validQuestions.length} questions`);
-        } else {
-          console.log('No valid questions to insert');
+        if (toolCall) {
+          const { questions } = JSON.parse(toolCall.function.arguments);
+          console.log(`  Extracted ${questions.length} questions from chunk ${chunkIndex + 1}`);
+          allQuestions.push(...questions);
         }
       }
+      
+      console.log(`Total extracted from all chunks: ${allQuestions.length} questions. Deduplicating...`);
+      
+      // Deduplicate by question text similarity (exact match)
+      const uniqueQuestions = new Map();
+      allQuestions.forEach(q => {
+        const key = String(q.question_text).trim().toLowerCase().slice(0, 100);
+        if (!uniqueQuestions.has(key)) {
+          uniqueQuestions.set(key, q);
+        }
+      });
+      
+      const dedupedQuestions = Array.from(uniqueQuestions.values());
+      console.log(`After deduplication: ${dedupedQuestions.length} unique questions. Validating...`);
+      
+      // Validation function
+      const isValidQuestion = (q: any) => {
+        const issues: string[] = [];
+        
+        if (!q.question_text || String(q.question_text).trim() === '') {
+          issues.push('empty question text');
+        }
+        
+        if (!Array.isArray(q.options) || q.options.length !== 4) {
+          issues.push(`invalid options count (${Array.isArray(q.options) ? q.options.length : 0}/4)`);
+        } else {
+          const emptyOptions = q.options.filter((opt: any) => !opt || String(opt).trim() === '').length;
+          if (emptyOptions > 0) {
+            issues.push(`${emptyOptions} empty options`);
+          }
+        }
+        
+        if (typeof q.correct_answer !== 'number' || q.correct_answer < 0 || q.correct_answer > 3) {
+          issues.push(`invalid correct_answer index (${q.correct_answer})`);
+        }
+        
+        return { valid: issues.length === 0, issues };
+      };
+      
+      // Validate and categorize
+      const validQuestions: any[] = [];
+      const dropReasons: { [key: string]: number } = {};
+      
+      dedupedQuestions.forEach((q: any, index: number) => {
+        const validation = isValidQuestion(q);
+        
+        if (validation.valid) {
+          validQuestions.push(q);
+        } else {
+          if (Object.keys(dropReasons).length < 5) {
+            console.log(`Dropping question ${index + 1}: ${validation.issues.join(', ')}`);
+          }
+          
+          validation.issues.forEach(issue => {
+            dropReasons[issue] = (dropReasons[issue] || 0) + 1;
+          });
+        }
+      });
+      
+      console.log(`Validation complete: ${validQuestions.length} valid, ${dedupedQuestions.length - validQuestions.length} dropped`);
+      if (Object.keys(dropReasons).length > 0) {
+        console.log('Drop reasons:', JSON.stringify(dropReasons, null, 2));
+      }
+      
+      if (validQuestions.length > 0) {
+        const questionsToInsert = validQuestions.map((q: any) => {
+          const opts = q.options;
+          const correctIdx = q.correct_answer;
+          const letters = ['A', 'B', 'C', 'D'] as const;
+          
+          return {
+            document_id: documentId,
+            question: String(q.question_text),
+            option_a: String(opts[0]),
+            option_b: String(opts[1]),
+            option_c: String(opts[2]),
+            option_d: String(opts[3]),
+            correct_answer: letters[correctIdx],
+            module: String(doc.module || 'general'), // Use upload module, not AI classification
+          };
+        });
 
+        const { error: insertError } = await supabase
+          .from('extracted_questions')
+          .insert(questionsToInsert);
+
+        if (insertError) {
+          console.error('Insert error:', insertError);
+          throw insertError;
+        }
+
+        console.log(`Successfully inserted ${validQuestions.length} questions for module: ${doc.module}`);
+      } else {
+        console.log('No valid questions to insert');
+      }
     } else if (doc.purpose === 'rag') {
       // RAG processing - Store chunks WITHOUT embeddings
       console.log('Starting RAG processing (Gemini-only, no embeddings)...');
