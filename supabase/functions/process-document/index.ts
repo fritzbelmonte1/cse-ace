@@ -20,13 +20,15 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let documentId: string | undefined;
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  );
+
   try {
-    const { documentId } = await req.json();
-    
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
+    const body = await req.json();
+    documentId = body.documentId;
 
     // Get document details
     const { data: doc, error: docError } = await supabase
@@ -40,6 +42,12 @@ serve(async (req) => {
     }
 
     console.log(`Processing document: ${doc.file_name}`);
+
+    // Mark as processing
+    await supabase
+      .from('documents')
+      .update({ processing_status: 'processing' })
+      .eq('id', documentId);
 
     // Download file from storage
     const { data: fileData, error: downloadError } = await supabase.storage
@@ -184,7 +192,10 @@ serve(async (req) => {
     // Mark as processed
     await supabase
       .from('documents')
-      .update({ processed: true })
+      .update({ 
+        processed: true,
+        processing_status: 'completed'
+      })
       .eq('id', documentId);
 
     return new Response(JSON.stringify({ 
@@ -197,6 +208,18 @@ serve(async (req) => {
   } catch (error) {
     console.error('Processing error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Mark as failed if we have a documentId
+    if (documentId) {
+      await supabase
+        .from('documents')
+        .update({ 
+          processing_status: 'failed',
+          error_message: errorMessage
+        })
+        .eq('id', documentId);
+    }
+    
     return new Response(JSON.stringify({ 
       error: errorMessage 
     }), {
