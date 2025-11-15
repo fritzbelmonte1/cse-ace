@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { ArrowLeft, Loader2, Lightbulb } from "lucide-react";
 import { toast } from "sonner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Navigation } from "@/components/Navigation";
 
 const Practice = () => {
   const { moduleId } = useParams();
@@ -228,16 +229,18 @@ const Practice = () => {
   const progress = ((currentIndex + 1) / questions.length) * 100;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted pb-24 sm:pb-4">
-      <div className="container max-w-full sm:max-w-2xl lg:max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
-        <Button 
-          variant="ghost" 
-          onClick={() => navigate("/dashboard")} 
-          className="mb-4 h-10 sm:h-9"
-        >
-          <ArrowLeft className="h-4 w-4 sm:mr-2" />
-          <span className="hidden sm:inline">Back to Dashboard</span>
-        </Button>
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted pb-24 sm:pb-4">
+        <div className="container max-w-full sm:max-w-2xl lg:max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+          <Button 
+            variant="ghost" 
+            onClick={() => navigate("/dashboard")} 
+            className="mb-4 h-10 sm:h-9"
+          >
+            <ArrowLeft className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Back to Dashboard</span>
+          </Button>
 
         <div className="mb-4 sm:mb-6">
           <div className="flex justify-between items-center mb-2">
@@ -384,6 +387,7 @@ const Practice = () => {
         </Card>
       </div>
     </div>
+    </>
   );
 };
 

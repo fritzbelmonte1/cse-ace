@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { FlashcardImport } from "@/components/FlashcardImport";
 import { DeckManager } from "@/components/DeckManager";
+import { Navigation } from "@/components/Navigation";
 
 interface Flashcard {
   id: string;
@@ -362,7 +363,9 @@ const Flashcards = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <Button variant="ghost" onClick={() => navigate("/dashboard")}>
@@ -604,6 +607,7 @@ const Flashcards = () => {
         )}
       </div>
     </div>
+    </>
   );
 };
 

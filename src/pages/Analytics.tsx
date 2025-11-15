@@ -7,6 +7,7 @@ import { ArrowLeft, TrendingUp, Target, Clock, Award, Sparkles, Loader2 } from "
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { Navigation } from "@/components/Navigation";
 
 interface PracticeSession {
   id: string;
@@ -178,7 +179,9 @@ const Analytics = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
         <Button variant="ghost" onClick={() => navigate("/dashboard")} className="mb-6">
           <ArrowLeft className="mr-2 h-4 w-4" />
@@ -424,6 +427,7 @@ const Analytics = () => {
         </Tabs>
       </div>
     </div>
+    </>
   );
 };
 

@@ -12,6 +12,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from 
 import { toast } from "sonner";
 import { Clock, Flag, Loader2, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Navigation } from "@/components/Navigation";
 
 export default function ExamInterface() {
   const { examId } = useParams();
@@ -199,9 +200,11 @@ export default function ExamInterface() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-20 sm:pb-0">
-      {/* Header */}
-      <div className="border-b bg-card sticky top-0 z-10">
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-background pb-20 sm:pb-0">
+        {/* Header */}
+        <div className="border-b bg-card sticky top-16 z-10">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
@@ -458,6 +461,7 @@ export default function ExamInterface() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+      </div>
+    </>
   );
 }

@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ArrowLeft, Target, Calendar, TrendingUp, Plus, Trash2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { Navigation } from "@/components/Navigation";
 
 interface Goal {
   id: string;
@@ -221,7 +222,9 @@ const Goals = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <>
+      <Navigation />
+      <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <Button variant="ghost" onClick={() => navigate("/dashboard")}>
@@ -426,6 +429,7 @@ const Goals = () => {
         )}
       </div>
     </div>
+    </>
   );
 };
 
