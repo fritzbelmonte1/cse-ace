@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { ArrowLeft, Upload, Trash2, RefreshCw, Loader2 } from "lucide-react";
+import { ArrowLeft, Upload, Trash2, RefreshCw, Loader2, CheckCircle2, FileUp } from "lucide-react";
 
 const AdminUpload = () => {
   const navigate = useNavigate();
@@ -14,6 +15,8 @@ const AdminUpload = () => {
   const [purpose, setPurpose] = useState<"questions" | "rag">("questions");
   const [module, setModule] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState("");
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -52,29 +55,81 @@ const AdminUpload = () => {
     }
 
     setUploading(true);
+    setUploadProgress(0);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('purpose', purpose);
-      formData.append('module', module || 'general');
+      // Step 1: Upload to storage (0-50%)
+      setUploadStatus("Uploading file to storage...");
+      setUploadProgress(10);
 
-      const { data, error } = await supabase.functions.invoke('upload-document', {
-        body: formData,
-      });
-
-      if (error) {
-        throw new Error(error.message || 'Upload failed');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Please log in first");
+        navigate("/auth");
+        return;
       }
 
-      toast.success("Document uploaded successfully!");
-      setFile(null);
-      setPurpose("questions");
-      setModule("");
-      fetchDocuments();
+      const fileName = `public/${Date.now()}-${file.name}`;
+      
+      setUploadProgress(25);
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('cse-documents')
+        .upload(fileName, file, {
+          contentType: file.type,
+          upsert: false
+        });
+
+      if (uploadError) throw uploadError;
+      
+      setUploadProgress(50);
+
+      // Step 2: Create document record (50-70%)
+      setUploadStatus("Creating document record...");
+      
+      const { data: docData, error: docError } = await supabase
+        .from('documents')
+        .insert({
+          uploaded_by: user.id,
+          file_name: file.name,
+          file_path: fileName,
+          purpose: purpose,
+          module: module || null,
+          processed: false
+        })
+        .select()
+        .single();
+
+      if (docError) throw docError;
+      
+      setUploadProgress(70);
+
+      // Step 3: Trigger processing (70-100%)
+      setUploadStatus("Processing document...");
+      
+      await supabase.functions.invoke('process-document', {
+        body: { documentId: docData.id }
+      });
+
+      setUploadProgress(100);
+      setUploadStatus("Complete!");
+
+      toast.success("Document uploaded and processing started!");
+      
+      // Reset after a brief delay
+      setTimeout(() => {
+        setFile(null);
+        setPurpose("questions");
+        setModule("");
+        setUploadProgress(0);
+        setUploadStatus("");
+        fetchDocuments();
+      }, 1000);
+
     } catch (error: any) {
       console.error('Upload error:', error);
       toast.error(error.message || "Failed to upload document");
+      setUploadProgress(0);
+      setUploadStatus("");
     } finally {
       setUploading(false);
     }
@@ -182,6 +237,36 @@ const AdminUpload = () => {
                   disabled={uploading}
                 />
               </div>
+
+              {uploading && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{uploadStatus}</span>
+                    <span className="font-medium">{uploadProgress}%</span>
+                  </div>
+                  <Progress value={uploadProgress} className="h-2" />
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    {uploadProgress < 50 && (
+                      <>
+                        <FileUp className="h-3 w-3 animate-pulse" />
+                        <span>Uploading file...</span>
+                      </>
+                    )}
+                    {uploadProgress >= 50 && uploadProgress < 100 && (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <span>Processing document...</span>
+                      </>
+                    )}
+                    {uploadProgress === 100 && (
+                      <>
+                        <CheckCircle2 className="h-3 w-3 text-green-500" />
+                        <span className="text-green-500">Upload complete!</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <Button type="submit" disabled={uploading || !file}>
                 {uploading ? (
