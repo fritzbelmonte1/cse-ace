@@ -343,11 +343,15 @@ Your goal: Extract the MAXIMUM number of questions possible. When in doubt, extr
         console.log('Drop reasons:', JSON.stringify(dropReasons, null, 2));
       }
       
-      if (validQuestions.length > 0) {
-        const questionsToInsert = validQuestions.map((q: any) => {
+      // Filter out questions with unknown correct answers
+      const questionsWithAnswers = validQuestions.filter((q: any) => q.correct_answer >= 0 && q.correct_answer < 4);
+      console.log(`After filtering unknown answers: ${questionsWithAnswers.length} questions with known answers`);
+      
+      if (questionsWithAnswers.length > 0) {
+        const questionsToInsert = questionsWithAnswers.map((q: any) => {
           const opts = q.options;
           const correctIdx = q.correct_answer;
-          const letters = ['A', 'B', 'C', 'D', 'unknown'] as const;
+          const letters = ['A', 'B', 'C', 'D'] as const;
           
           return {
             document_id: documentId,
@@ -356,7 +360,7 @@ Your goal: Extract the MAXIMUM number of questions possible. When in doubt, extr
             option_b: String(opts[1]),
             option_c: String(opts[2]),
             option_d: String(opts[3]),
-            correct_answer: correctIdx >= 0 ? letters[correctIdx] : 'unknown',
+            correct_answer: letters[correctIdx],
             module: String(doc.module || 'general'),
             confidence_score: q.confidenceScore
           };
@@ -371,9 +375,9 @@ Your goal: Extract the MAXIMUM number of questions possible. When in doubt, extr
           throw insertError;
         }
 
-        console.log(`Successfully inserted ${validQuestions.length} questions for module: ${doc.module}`);
+        console.log(`Successfully inserted ${questionsWithAnswers.length} questions for module: ${doc.module}`);
       } else {
-        console.log('No valid questions to insert');
+        console.log('No valid questions with known answers to insert');
       }
     } else if (doc.purpose === 'rag') {
       // RAG processing - Store chunks WITHOUT embeddings
