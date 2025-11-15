@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, Settings, Loader2, CheckCircle, XCircle, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Settings, Loader2, CheckCircle, XCircle, Plus, Trash2, FileQuestion } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { z } from "zod";
@@ -314,6 +314,7 @@ const AdminSettings = () => {
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => navigate("/admin/questions")}>
+              <FileQuestion className="h-4 w-4 mr-2" />
               Review Questions
             </Button>
             <Button variant="outline" onClick={() => navigate("/admin/users")}>

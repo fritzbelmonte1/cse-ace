@@ -1,23 +1,29 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
-import { ArrowLeft, Trash2, RefreshCw, AlertCircle, CheckCircle2, Edit, Search, Copy } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { QuestionMergeDialog } from "@/components/QuestionMergeDialog";
-import { similarityScore } from "@/lib/utils";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { ArrowLeft, Check, X, Edit2, Save, XCircle, CheckCircle, Clock, Search, Filter } from "lucide-react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
-interface ExtractedQuestion {
+const modules = [
+  { id: "vocabulary", name: "Vocabulary" },
+  { id: "grammar", name: "Grammar" },
+  { id: "reading", name: "Reading Comprehension" },
+  { id: "numerical", name: "Numerical Ability" },
+  { id: "logical", name: "Logical Reasoning" },
+];
+
+interface Question {
   id: string;
-  document_id: string;
   question: string;
   option_a: string;
   option_b: string;
@@ -26,317 +32,258 @@ interface ExtractedQuestion {
   correct_answer: string;
   module: string;
   confidence_score: number;
+  status: string;
+  document_id: string;
   created_at: string;
 }
 
-const AdminQuestions = () => {
+export default function AdminQuestions() {
   const navigate = useNavigate();
-  const [questions, setQuestions] = useState<ExtractedQuestion[]>([]);
-  const [filteredQuestions, setFilteredQuestions] = useState<ExtractedQuestion[]>([]);
+  const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [confidenceFilter, setConfidenceFilter] = useState<string>("all");
-  const [moduleFilter, setModuleFilter] = useState<string>("all");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
-  const [editingQuestion, setEditingQuestion] = useState<ExtractedQuestion | null>(null);
-  const [modules, setModules] = useState<string[]>([]);
-  const [similarQuestions, setSimilarQuestions] = useState<ExtractedQuestion[]>([]);
-  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<Partial<Question>>({});
+  
+  // Filters
+  const [moduleFilter, setModuleFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("pending");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [confidenceFilter, setConfidenceFilter] = useState<string>("all");
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const ITEMS_PER_PAGE = 20;
 
   useEffect(() => {
-    fetchQuestions();
+    checkAuth();
   }, []);
 
   useEffect(() => {
-    applyFilters();
-  }, [questions, confidenceFilter, moduleFilter, searchQuery]);
+    if (user) {
+      fetchQuestions();
+    }
+  }, [user, moduleFilter, statusFilter, confidenceFilter, currentPage]);
+
+  const checkAuth = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      navigate("/auth");
+      return;
+    }
+
+    const { data: roleData } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id)
+      .eq("role", "admin")
+      .maybeSingle();
+
+    if (!roleData) {
+      toast.error("Admin access required");
+      navigate("/dashboard");
+      return;
+    }
+
+    setUser(user);
+    setLoading(false);
+  };
 
   const fetchQuestions = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('extracted_questions')
-        .select('*')
-        .order('created_at', { ascending: false });
+    setLoading(true);
+    let query = supabase
+      .from("extracted_questions")
+      .select("*", { count: "exact" })
+      .order("created_at", { ascending: false });
 
-      if (error) throw error;
-
-      setQuestions(data || []);
-      
-      // Extract unique modules
-      const uniqueModules = [...new Set(data?.map(q => q.module) || [])];
-      setModules(uniqueModules);
-    } catch (error: any) {
-      console.error('Error fetching questions:', error);
-      toast.error("Failed to load questions");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const applyFilters = () => {
-    let filtered = [...questions];
-
-    // Confidence filter
-    if (confidenceFilter === "low") {
-      filtered = filtered.filter(q => q.confidence_score < 0.7);
-    } else if (confidenceFilter === "medium") {
-      filtered = filtered.filter(q => q.confidence_score >= 0.7 && q.confidence_score < 0.9);
-    } else if (confidenceFilter === "high") {
-      filtered = filtered.filter(q => q.confidence_score >= 0.9);
-    } else if (confidenceFilter === "unknown") {
-      filtered = filtered.filter(q => q.correct_answer === "unknown");
-    }
-
-    // Module filter
     if (moduleFilter !== "all") {
-      filtered = filtered.filter(q => q.module === moduleFilter);
+      query = query.eq("module", moduleFilter);
     }
 
-    // Search filter
+    if (statusFilter !== "all") {
+      query = query.eq("status", statusFilter);
+    }
+
+    if (confidenceFilter === "low") {
+      query = query.lt("confidence_score", 0.7);
+    } else if (confidenceFilter === "high") {
+      query = query.gte("confidence_score", 0.9);
+    }
+
     if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(q => 
-        q.question.toLowerCase().includes(query) ||
-        q.option_a.toLowerCase().includes(query) ||
-        q.option_b.toLowerCase().includes(query) ||
-        q.option_c.toLowerCase().includes(query) ||
-        q.option_d.toLowerCase().includes(query)
-      );
+      query = query.ilike("question", `%${searchQuery}%`);
     }
 
-    setFilteredQuestions(filtered);
+    const from = (currentPage - 1) * ITEMS_PER_PAGE;
+    const to = from + ITEMS_PER_PAGE - 1;
+    query = query.range(from, to);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      console.error("Error fetching questions:", error);
+      toast.error("Failed to load questions");
+    } else {
+      setQuestions(data || []);
+      setTotalCount(count || 0);
+    }
+    setLoading(false);
   };
 
-  const handleSelectAll = () => {
-    if (selectedQuestions.size === filteredQuestions.length) {
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedQuestions(new Set(questions.map(q => q.id)));
+    } else {
       setSelectedQuestions(new Set());
-    } else {
-      setSelectedQuestions(new Set(filteredQuestions.map(q => q.id)));
     }
   };
 
-  const handleSelectQuestion = (questionId: string) => {
+  const handleSelectQuestion = (id: string, checked: boolean) => {
     const newSelected = new Set(selectedQuestions);
-    if (newSelected.has(questionId)) {
-      newSelected.delete(questionId);
+    if (checked) {
+      newSelected.add(id);
     } else {
-      newSelected.add(questionId);
+      newSelected.delete(id);
     }
     setSelectedQuestions(newSelected);
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkAction = async (action: "approve" | "reject") => {
     if (selectedQuestions.size === 0) {
       toast.error("No questions selected");
       return;
     }
 
-    const confirmed = window.confirm(
-      `Are you sure you want to delete ${selectedQuestions.size} question(s)?`
+    const status = action === "approve" ? "approved" : "rejected";
+    
+    // Update each selected question
+    const updates = Array.from(selectedQuestions).map(id => 
+      supabase
+        .from("extracted_questions")
+        .update({
+          status,
+          approved_by: user.id,
+          approved_at: new Date().toISOString()
+        })
+        .eq("id", id)
     );
 
-    if (!confirmed) return;
+    const results = await Promise.all(updates);
+    const hasError = results.some(r => r.error);
 
-    try {
-      const { error } = await supabase
-        .from('extracted_questions')
-        .delete()
-        .in('id', Array.from(selectedQuestions));
-
-      if (error) throw error;
-
-      toast.success(`Deleted ${selectedQuestions.size} question(s)`);
+    if (hasError) {
+      console.error("Bulk action error");
+      toast.error(`Failed to ${action} some questions`);
+    } else {
+      toast.success(`${selectedQuestions.size} questions ${action}d`);
       setSelectedQuestions(new Set());
       fetchQuestions();
-    } catch (error: any) {
-      console.error('Error deleting questions:', error);
-      toast.error("Failed to delete questions");
     }
   };
 
-  const handleEditQuestion = async () => {
-    if (!editingQuestion) return;
+  const startEdit = (question: Question) => {
+    setEditingId(question.id);
+    setEditForm(question);
+  };
 
-    try {
-      const { error } = await supabase
-        .from('extracted_questions')
-        .update({
-          question: editingQuestion.question,
-          option_a: editingQuestion.option_a,
-          option_b: editingQuestion.option_b,
-          option_c: editingQuestion.option_c,
-          option_d: editingQuestion.option_d,
-          correct_answer: editingQuestion.correct_answer,
-          module: editingQuestion.module,
-        })
-        .eq('id', editingQuestion.id);
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditForm({});
+  };
 
-      if (error) throw error;
+  const saveEdit = async () => {
+    if (!editingId) return;
 
-      toast.success("Question updated successfully");
-      setEditingQuestion(null);
+    const { error } = await supabase
+      .from("extracted_questions")
+      .update({
+        question: editForm.question,
+        option_a: editForm.option_a,
+        option_b: editForm.option_b,
+        option_c: editForm.option_c,
+        option_d: editForm.option_d,
+        correct_answer: editForm.correct_answer,
+        module: editForm.module
+      })
+      .eq("id", editingId);
+
+    if (error) {
+      console.error("Save error:", error);
+      toast.error("Failed to save changes");
+    } else {
+      toast.success("Question updated");
+      setEditingId(null);
+      setEditForm({});
       fetchQuestions();
-    } catch (error: any) {
-      console.error('Error updating question:', error);
-      toast.error("Failed to update question");
     }
   };
 
   const getConfidenceBadge = (score: number) => {
-    if (score >= 0.9) {
-      return <Badge variant="default" className="bg-green-500 hover:bg-green-600">High ({score.toFixed(2)})</Badge>;
-    } else if (score >= 0.7) {
-      return <Badge variant="secondary">Medium ({score.toFixed(2)})</Badge>;
-    } else {
-      return <Badge variant="destructive">Low ({score.toFixed(2)})</Badge>;
+    if (score >= 0.9) return <Badge variant="default" className="bg-green-500">High ({score.toFixed(2)})</Badge>;
+    if (score >= 0.7) return <Badge variant="secondary">Medium ({score.toFixed(2)})</Badge>;
+    return <Badge variant="destructive">Low ({score.toFixed(2)})</Badge>;
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "approved":
+        return <Badge variant="default" className="bg-green-500"><CheckCircle className="w-3 h-3 mr-1" />Approved</Badge>;
+      case "rejected":
+        return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />Rejected</Badge>;
+      default:
+        return <Badge variant="secondary"><Clock className="w-3 h-3 mr-1" />Pending</Badge>;
     }
   };
 
-  const findSimilarQuestions = (question: ExtractedQuestion) => {
-    const SIMILARITY_THRESHOLD = 0.90;
-    const similar: ExtractedQuestion[] = [question];
-    
-    questions.forEach((q) => {
-      if (q.id !== question.id) {
-        const similarity = similarityScore(question.question, q.question);
-        if (similarity >= SIMILARITY_THRESHOLD) {
-          similar.push(q);
-        }
-      }
-    });
-    
-    if (similar.length > 1) {
-      setSimilarQuestions(similar);
-      setMergeDialogOpen(true);
-    } else {
-      toast.info("No similar questions found (90% similarity threshold)");
-    }
-  };
+  const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
-  const handleMerge = async (
-    mergedQuestion: Partial<ExtractedQuestion>,
-    keepId: string,
-    deleteIds: string[]
-  ) => {
-    try {
-      // Update the kept question
-      const { error: updateError } = await supabase
-        .from('extracted_questions')
-        .update(mergedQuestion)
-        .eq('id', keepId);
-
-      if (updateError) throw updateError;
-
-      // Delete the duplicate questions
-      const { error: deleteError } = await supabase
-        .from('extracted_questions')
-        .delete()
-        .in('id', deleteIds);
-
-      if (deleteError) throw deleteError;
-
-      toast.success(`Merged ${deleteIds.length + 1} similar questions successfully`);
-      fetchQuestions();
-      setSimilarQuestions([]);
-    } catch (error: any) {
-      console.error('Error merging questions:', error);
-      toast.error("Failed to merge questions");
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">
-        <div className="text-center">
-          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">Loading questions...</p>
-        </div>
-      </div>
-    );
+  if (loading && !questions.length) {
+    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-background p-6">
+      <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => navigate("/admin/upload")}
-            >
-              <ArrowLeft className="h-4 w-4" />
+            <Button variant="ghost" size="icon" onClick={() => navigate("/admin/settings")}>
+              <ArrowLeft className="w-5 h-5" />
             </Button>
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">Question Review</h1>
-              <p className="text-muted-foreground">
-                Review and manage extracted questions
-              </p>
+              <h1 className="text-3xl font-bold">Question Review</h1>
+              <p className="text-muted-foreground">Review and approve AI-extracted questions</p>
             </div>
           </div>
-          <Button onClick={fetchQuestions} variant="outline" size="icon">
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Total Questions</CardDescription>
-              <CardTitle className="text-3xl">{questions.length}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Low Confidence</CardDescription>
-              <CardTitle className="text-3xl text-destructive">
-                {questions.filter(q => q.confidence_score < 0.7).length}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Unknown Answers</CardDescription>
-              <CardTitle className="text-3xl text-yellow-500">
-                {questions.filter(q => q.correct_answer === "unknown").length}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>High Quality</CardDescription>
-              <CardTitle className="text-3xl text-green-500">
-                {questions.filter(q => q.confidence_score >= 0.9).length}
-              </CardTitle>
-            </CardHeader>
-          </Card>
         </div>
 
         {/* Filters */}
-        <Card>
+        <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Filters</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Filter className="w-5 h-5" />
+              Filters
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
-                <Label>Confidence Level</Label>
-                <Select value={confidenceFilter} onValueChange={setConfidenceFilter}>
+                <Label>Status</Label>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Levels</SelectItem>
-                    <SelectItem value="low">Low (&lt; 0.7)</SelectItem>
-                    <SelectItem value="medium">Medium (0.7-0.9)</SelectItem>
-                    <SelectItem value="high">High (&gt; 0.9)</SelectItem>
-                    <SelectItem value="unknown">Unknown Answer</SelectItem>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="rejected">Rejected</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
               <div>
                 <Label>Module</Label>
                 <Select value={moduleFilter} onValueChange={setModuleFilter}>
@@ -345,44 +292,62 @@ const AdminQuestions = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Modules</SelectItem>
-                    {modules.map(module => (
-                      <SelectItem key={module} value={module}>{module}</SelectItem>
+                    {modules.map(m => (
+                      <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+
+              <div>
+                <Label>Confidence</Label>
+                <Select value={confidenceFilter} onValueChange={setConfidenceFilter}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Levels</SelectItem>
+                    <SelectItem value="high">High (≥0.9)</SelectItem>
+                    <SelectItem value="low">Low (&lt;0.7)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div>
                 <Label>Search</Label>
                 <div className="relative">
-                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Search className="absolute left-2 top-2.5 w-4 h-4 text-muted-foreground" />
                   <Input
                     placeholder="Search questions..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && fetchQuestions()}
                     className="pl-8"
                   />
                 </div>
               </div>
             </div>
+
+            <Button onClick={fetchQuestions} className="w-full">
+              Apply Filters
+            </Button>
           </CardContent>
         </Card>
 
         {/* Bulk Actions */}
         {selectedQuestions.size > 0 && (
-          <Card className="border-primary">
+          <Card className="mb-6 border-primary/50 bg-primary/5">
             <CardContent className="py-4">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">
-                  {selectedQuestions.size} question(s) selected
-                </p>
+                <p className="font-medium">{selectedQuestions.size} question(s) selected</p>
                 <div className="flex gap-2">
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={handleBulkDelete}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Selected
+                  <Button onClick={() => handleBulkAction("approve")} variant="default" size="sm">
+                    <Check className="w-4 h-4 mr-2" />
+                    Approve Selected
+                  </Button>
+                  <Button onClick={() => handleBulkAction("reject")} variant="destructive" size="sm">
+                    <X className="w-4 h-4 mr-2" />
+                    Reject Selected
                   </Button>
                 </div>
               </div>
@@ -391,240 +356,233 @@ const AdminQuestions = () => {
         )}
 
         {/* Questions List */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>
-                Questions ({filteredQuestions.length})
-              </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSelectAll}
-              >
-                {selectedQuestions.size === filteredQuestions.length ? "Deselect All" : "Select All"}
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {filteredQuestions.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No questions found matching your filters</p>
-                </div>
-              ) : (
-                filteredQuestions.map((question) => (
-                  <Card key={question.id} className="border-l-4 border-l-primary/50">
-                    <CardContent className="pt-6">
-                      <div className="flex items-start gap-4">
-                        <Checkbox
-                          checked={selectedQuestions.has(question.id)}
-                          onCheckedChange={() => handleSelectQuestion(question.id)}
-                        />
-                        <div className="flex-1 space-y-3">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1">
-                              <p className="font-medium text-foreground mb-2">
-                                {question.question}
-                              </p>
-                              <div className="grid grid-cols-2 gap-2 text-sm">
-                                <div className={`p-2 rounded border ${question.correct_answer === 'A' ? 'bg-green-500/10 border-green-500' : 'bg-muted'}`}>
-                                  <span className="font-medium">A:</span> {question.option_a}
-                                </div>
-                                <div className={`p-2 rounded border ${question.correct_answer === 'B' ? 'bg-green-500/10 border-green-500' : 'bg-muted'}`}>
-                                  <span className="font-medium">B:</span> {question.option_b}
-                                </div>
-                                <div className={`p-2 rounded border ${question.correct_answer === 'C' ? 'bg-green-500/10 border-green-500' : 'bg-muted'}`}>
-                                  <span className="font-medium">C:</span> {question.option_c}
-                                </div>
-                                <div className={`p-2 rounded border ${question.correct_answer === 'D' ? 'bg-green-500/10 border-green-500' : 'bg-muted'}`}>
-                                  <span className="font-medium">D:</span> {question.option_d}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex flex-col items-end gap-2">
-                              {getConfidenceBadge(question.confidence_score)}
-                              <Badge variant="outline">{question.module}</Badge>
-                              {question.correct_answer === "unknown" && (
-                                <Badge variant="secondary" className="bg-yellow-500/10 text-yellow-700">
-                                  <AlertCircle className="h-3 w-3 mr-1" />
-                                  No Answer
-                                </Badge>
-                              )}
-                            </div>
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Checkbox
+              checked={selectedQuestions.size === questions.length && questions.length > 0}
+              onCheckedChange={handleSelectAll}
+            />
+            <Label>Select All ({totalCount} total)</Label>
+          </div>
+
+          {questions.map((question) => (
+            <Card key={question.id} className={cn(
+              "transition-all",
+              selectedQuestions.has(question.id) && "border-primary"
+            )}>
+              <CardContent className="p-6">
+                <div className="flex gap-4">
+                  <Checkbox
+                    checked={selectedQuestions.has(question.id)}
+                    onCheckedChange={(checked) => handleSelectQuestion(question.id, checked as boolean)}
+                  />
+
+                  <div className="flex-1">
+                    {editingId === question.id ? (
+                      // Edit Mode
+                      <div className="space-y-4">
+                        <div>
+                          <Label>Module</Label>
+                          <Select value={editForm.module} onValueChange={(value) => setEditForm({...editForm, module: value})}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {modules.map(m => (
+                                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label>Question</Label>
+                          <Textarea
+                            value={editForm.question}
+                            onChange={(e) => setEditForm({...editForm, question: e.target.value})}
+                            rows={3}
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <Label>Option A</Label>
+                            <Input
+                              value={editForm.option_a}
+                              onChange={(e) => setEditForm({...editForm, option_a: e.target.value})}
+                            />
                           </div>
-                          <div className="flex items-center gap-2 pt-2 border-t">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => findSimilarQuestions(question)}
-                            >
-                              <Copy className="h-4 w-4 mr-2" />
-                              Find Similar
-                            </Button>
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setEditingQuestion(question)}
-                                >
-                                  <Edit className="h-4 w-4 mr-2" />
-                                  Edit
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent className="max-w-2xl">
-                                <DialogHeader>
-                                  <DialogTitle>Edit Question</DialogTitle>
-                                  <DialogDescription>
-                                    Update the question details below
-                                  </DialogDescription>
-                                </DialogHeader>
-                                {editingQuestion && (
-                                  <div className="space-y-4">
-                                    <div>
-                                      <Label>Question</Label>
-                                      <Textarea
-                                        value={editingQuestion.question}
-                                        onChange={(e) => setEditingQuestion({
-                                          ...editingQuestion,
-                                          question: e.target.value
-                                        })}
-                                        rows={3}
-                                      />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                      <div>
-                                        <Label>Option A</Label>
-                                        <Input
-                                          value={editingQuestion.option_a}
-                                          onChange={(e) => setEditingQuestion({
-                                            ...editingQuestion,
-                                            option_a: e.target.value
-                                          })}
-                                        />
-                                      </div>
-                                      <div>
-                                        <Label>Option B</Label>
-                                        <Input
-                                          value={editingQuestion.option_b}
-                                          onChange={(e) => setEditingQuestion({
-                                            ...editingQuestion,
-                                            option_b: e.target.value
-                                          })}
-                                        />
-                                      </div>
-                                      <div>
-                                        <Label>Option C</Label>
-                                        <Input
-                                          value={editingQuestion.option_c}
-                                          onChange={(e) => setEditingQuestion({
-                                            ...editingQuestion,
-                                            option_c: e.target.value
-                                          })}
-                                        />
-                                      </div>
-                                      <div>
-                                        <Label>Option D</Label>
-                                        <Input
-                                          value={editingQuestion.option_d}
-                                          onChange={(e) => setEditingQuestion({
-                                            ...editingQuestion,
-                                            option_d: e.target.value
-                                          })}
-                                        />
-                                      </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                      <div>
-                                        <Label>Correct Answer</Label>
-                                        <Select
-                                          value={editingQuestion.correct_answer}
-                                          onValueChange={(value) => setEditingQuestion({
-                                            ...editingQuestion,
-                                            correct_answer: value
-                                          })}
-                                        >
-                                          <SelectTrigger>
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="A">A</SelectItem>
-                                            <SelectItem value="B">B</SelectItem>
-                                            <SelectItem value="C">C</SelectItem>
-                                            <SelectItem value="D">D</SelectItem>
-                                            <SelectItem value="unknown">Unknown</SelectItem>
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                      <div>
-                                        <Label>Module</Label>
-                                        <Input
-                                          value={editingQuestion.module}
-                                          onChange={(e) => setEditingQuestion({
-                                            ...editingQuestion,
-                                            module: e.target.value
-                                          })}
-                                        />
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-                                <DialogFooter>
-                                  <Button variant="outline" onClick={() => setEditingQuestion(null)}>
-                                    Cancel
-                                  </Button>
-                                  <Button onClick={handleEditQuestion}>
-                                    <CheckCircle2 className="h-4 w-4 mr-2" />
-                                    Save Changes
-                                  </Button>
-                                </DialogFooter>
-                              </DialogContent>
-                            </Dialog>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={async () => {
-                                const confirmed = window.confirm("Delete this question?");
-                                if (!confirmed) return;
-                                try {
-                                  const { error } = await supabase
-                                    .from('extracted_questions')
-                                    .delete()
-                                    .eq('id', question.id);
-                                  if (error) throw error;
-                                  toast.success("Question deleted");
-                                  fetchQuestions();
-                                } catch (error) {
-                                  toast.error("Failed to delete question");
-                                }
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </Button>
+                          <div>
+                            <Label>Option B</Label>
+                            <Input
+                              value={editForm.option_b}
+                              onChange={(e) => setEditForm({...editForm, option_b: e.target.value})}
+                            />
+                          </div>
+                          <div>
+                            <Label>Option C</Label>
+                            <Input
+                              value={editForm.option_c}
+                              onChange={(e) => setEditForm({...editForm, option_c: e.target.value})}
+                            />
+                          </div>
+                          <div>
+                            <Label>Option D</Label>
+                            <Input
+                              value={editForm.option_d}
+                              onChange={(e) => setEditForm({...editForm, option_d: e.target.value})}
+                            />
                           </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
-            </div>
-          </CardContent>
-        </Card>
 
-        {/* Question Merge Dialog */}
-        <QuestionMergeDialog
-          open={mergeDialogOpen}
-          onOpenChange={setMergeDialogOpen}
-          questions={similarQuestions}
-          onMerge={handleMerge}
-        />
+                        <div>
+                          <Label>Correct Answer</Label>
+                          <RadioGroup value={editForm.correct_answer} onValueChange={(value) => setEditForm({...editForm, correct_answer: value})}>
+                            <div className="flex gap-4">
+                              <div className="flex items-center gap-2">
+                                <RadioGroupItem value="A" id="edit-a" />
+                                <Label htmlFor="edit-a">A</Label>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <RadioGroupItem value="B" id="edit-b" />
+                                <Label htmlFor="edit-b">B</Label>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <RadioGroupItem value="C" id="edit-c" />
+                                <Label htmlFor="edit-c">C</Label>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <RadioGroupItem value="D" id="edit-d" />
+                                <Label htmlFor="edit-d">D</Label>
+                              </div>
+                            </div>
+                          </RadioGroup>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <Button onClick={saveEdit} size="sm">
+                            <Save className="w-4 h-4 mr-2" />
+                            Save Changes
+                          </Button>
+                          <Button onClick={cancelEdit} variant="outline" size="sm">
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      // View Mode
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge variant="outline">{question.module}</Badge>
+                              {getStatusBadge(question.status)}
+                              {getConfidenceBadge(question.confidence_score)}
+                            </div>
+                            <p className="font-medium text-lg mb-3">{question.question}</p>
+
+                            <div className="space-y-2">
+                              <div className={cn(
+                                "p-2 rounded border",
+                                question.correct_answer === "A" && "border-green-500 bg-green-50 dark:bg-green-950"
+                              )}>
+                                <span className="font-semibold">A.</span> {question.option_a}
+                              </div>
+                              <div className={cn(
+                                "p-2 rounded border",
+                                question.correct_answer === "B" && "border-green-500 bg-green-50 dark:bg-green-950"
+                              )}>
+                                <span className="font-semibold">B.</span> {question.option_b}
+                              </div>
+                              <div className={cn(
+                                "p-2 rounded border",
+                                question.correct_answer === "C" && "border-green-500 bg-green-50 dark:bg-green-950"
+                              )}>
+                                <span className="font-semibold">C.</span> {question.option_c}
+                              </div>
+                              <div className={cn(
+                                "p-2 rounded border",
+                                question.correct_answer === "D" && "border-green-500 bg-green-50 dark:bg-green-950"
+                              )}>
+                                <span className="font-semibold">D.</span> {question.option_d}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-2 ml-4">
+                            <Button onClick={() => startEdit(question)} variant="outline" size="sm">
+                              <Edit2 className="w-4 h-4" />
+                            </Button>
+                            {question.status !== "approved" && (
+                              <Button
+                                onClick={() => {
+                                  setSelectedQuestions(new Set([question.id]));
+                                  handleBulkAction("approve");
+                                }}
+                                variant="default"
+                                size="sm"
+                              >
+                                <Check className="w-4 h-4" />
+                              </Button>
+                            )}
+                            {question.status !== "rejected" && (
+                              <Button
+                                onClick={() => {
+                                  setSelectedQuestions(new Set([question.id]));
+                                  handleBulkAction("reject");
+                                }}
+                                variant="destructive"
+                                size="sm"
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+
+                        <p className="text-xs text-muted-foreground">
+                          Added {new Date(question.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+
+          {questions.length === 0 && !loading && (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <p className="text-muted-foreground">No questions found with current filters</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 mt-6">
+            <Button
+              variant="outline"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
+              Previous
+            </Button>
+            <span className="px-4">
+              Page {currentPage} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >
+              Next
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
-};
-
-export default AdminQuestions;
+}
