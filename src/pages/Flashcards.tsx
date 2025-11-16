@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { FlashcardImport } from "@/components/FlashcardImport";
 import { DeckManager } from "@/components/DeckManager";
 import { Navigation } from "@/components/Navigation";
+import { StudyStreakWidget } from "@/components/StudyStreakWidget";
 
 interface Flashcard {
   id: string;
@@ -41,8 +42,8 @@ const modules = [
   { id: "clerical", name: "Clerical Ability" },
 ];
 
-// SM-2 Spaced Repetition Algorithm
-const calculateNextReview = (quality: number, review?: FlashcardReview) => {
+// SM-2 Spaced Repetition Algorithm with Adaptive Difficulty
+const calculateNextReview = (quality: number, review?: FlashcardReview, flashcardId?: string, allReviews?: FlashcardReview[]) => {
   // quality: 0-5 (0=complete blackout, 5=perfect response)
   const currentEaseFactor = review?.ease_factor || 2.5;
   const currentInterval = review?.interval_days || 0;
@@ -72,11 +73,27 @@ const calculateNextReview = (quality: number, review?: FlashcardReview) => {
   const nextReviewDate = new Date();
   nextReviewDate.setDate(nextReviewDate.getDate() + newInterval);
 
+  // Calculate adaptive difficulty based on recent performance
+  let difficulty = 1; // Default medium
+  if (flashcardId && allReviews) {
+    const recentReviews = allReviews
+      .filter(r => r.flashcard_id === flashcardId)
+      .slice(-5);
+    
+    if (recentReviews.length >= 3) {
+      const avgQuality = recentReviews.reduce((sum, r) => sum + (r as any).quality, 0) / recentReviews.length;
+      if (avgQuality >= 4.5) difficulty = 0; // Easy
+      else if (avgQuality >= 3.5) difficulty = 1; // Medium
+      else difficulty = 2; // Hard
+    }
+  }
+
   return {
     interval_days: newInterval,
     ease_factor: newEaseFactor,
     repetition_number: newRepetition,
     next_review_date: nextReviewDate.toISOString(),
+    difficulty,
   };
 };
 
@@ -219,17 +236,35 @@ const Flashcards = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const currentReview = reviews[currentCard.id];
-      const nextReviewData = calculateNextReview(quality, currentReview);
+      // Fetch all reviews for adaptive difficulty calculation
+      const { data: allReviews } = await supabase
+        .from('flashcard_reviews')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('flashcard_id', currentCard.id)
+        .order('reviewed_at', { ascending: false });
 
+      const currentReview = reviews[currentCard.id];
+      const nextReviewData = calculateNextReview(quality, currentReview, currentCard.id, allReviews || []);
+
+      // Insert new review
       const { error } = await supabase.from("flashcard_reviews").insert({
         user_id: user.id,
         flashcard_id: currentCard.id,
         quality,
-        ...nextReviewData,
+        interval_days: nextReviewData.interval_days,
+        ease_factor: nextReviewData.ease_factor,
+        repetition_number: nextReviewData.repetition_number,
+        next_review_date: nextReviewData.next_review_date,
       });
 
       if (error) throw error;
+
+      // Update flashcard difficulty
+      await supabase
+        .from('flashcards')
+        .update({ difficulty: nextReviewData.difficulty })
+        .eq('id', currentCard.id);
 
       // Move to next card
       if (currentCardIndex < dueCards.length - 1) {
@@ -292,9 +327,16 @@ const Flashcards = () => {
             onClick={() => setIsFlipped(!isFlipped)}
           >
             <CardHeader>
-              <Badge className="w-fit mb-2">
-                {modules.find(m => m.id === currentCard.module)?.name}
-              </Badge>
+              <div className="flex items-center justify-between mb-2">
+                <Badge className="w-fit">
+                  {modules.find(m => m.id === currentCard.module)?.name}
+                </Badge>
+                {currentCard.difficulty !== undefined && (
+                  <Badge variant={currentCard.difficulty === 0 ? 'default' : currentCard.difficulty === 1 ? 'secondary' : 'destructive'}>
+                    {currentCard.difficulty === 0 ? '🟢 Easy' : currentCard.difficulty === 1 ? '🟡 Medium' : '🔴 Hard'}
+                  </Badge>
+                )}
+              </div>
               <CardTitle className="text-center">
                 {isFlipped ? "Answer" : "Question"}
               </CardTitle>
@@ -367,6 +409,10 @@ const Flashcards = () => {
       <Navigation />
       <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
+        <div className="mb-6">
+          <StudyStreakWidget />
+        </div>
+        
         <div className="flex items-center justify-between mb-6">
           <Button variant="ghost" onClick={() => navigate("/dashboard")}>
             <ArrowLeft className="mr-2 h-4 w-4" />

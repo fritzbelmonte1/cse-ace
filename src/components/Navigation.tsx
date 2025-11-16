@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
   DropdownMenu,
@@ -36,6 +37,7 @@ export function Navigation() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [dueCardsCount, setDueCardsCount] = useState(0);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -57,6 +59,25 @@ export function Navigation() {
     checkUser();
   }, []);
 
+  useEffect(() => {
+    const checkDueCards = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { count } = await supabase
+        .from('flashcard_reviews')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .lte('next_review_date', new Date().toISOString());
+
+      setDueCardsCount(count || 0);
+    };
+
+    checkDueCards();
+    const interval = setInterval(checkDueCards, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     toast.success("Logged out successfully");
@@ -66,7 +87,8 @@ export function Navigation() {
   const navItems = [
     { path: "/dashboard", label: "Dashboard", icon: Home },
     { path: "/ai-assistant", label: "AI Assistant", icon: MessageSquare },
-    { path: "/flashcards", label: "Flashcards", icon: Layers },
+    { path: "/flashcards", label: "Flashcards", icon: Layers, badge: dueCardsCount > 0 ? dueCardsCount : undefined },
+    { path: "/flashcard-analytics", label: "Flashcard Analytics", icon: BarChart },
     { path: "/analytics", label: "Analytics", icon: BarChart },
     { path: "/exam-analytics", label: "Exam Analytics", icon: BarChart },
     { path: "/goals", label: "Goals", icon: Target },
@@ -94,6 +116,11 @@ export function Navigation() {
         >
           <item.icon className="h-4 w-4" />
           {item.label}
+          {item.badge && (
+            <Badge variant="destructive" className="ml-auto">
+              {item.badge}
+            </Badge>
+          )}
         </NavLink>
       ))}
       

@@ -23,6 +23,7 @@ import ExamInterface from "./pages/ExamInterface";
 import ExamResults from "./pages/ExamResults";
 import ExamAnalytics from "./pages/ExamAnalytics";
 import Flashcards from "./pages/Flashcards";
+import FlashcardAnalytics from "./pages/FlashcardAnalytics";
 import BrowseDecks from "./pages/BrowseDecks";
 import VoiceHistory from "./pages/VoiceHistory";
 import NotFound from "./pages/NotFound";
@@ -98,8 +99,12 @@ const App = () => (
               </ProtectedRoute>
             }
           />
-            <Route path="/flashcards" element={<ProtectedRoute><Flashcards /></ProtectedRoute>} />
-            <Route path="/browse-decks" element={<ProtectedRoute><BrowseDecks /></ProtectedRoute>} />
+          <Route path="/flashcards" element={<ProtectedRoute><Flashcards /></ProtectedRoute>} />
+          <Route path="/flashcard-analytics" element={<ProtectedRoute><FlashcardAnalytics /></ProtectedRoute>} />
+          <Route path="/browse-decks" element={<ProtectedRoute><BrowseDecks /></ProtectedRoute>} />
+          <Route path="/flashcards" element={<ProtectedRoute><Flashcards /></ProtectedRoute>} />
+          <Route path="/flashcard-analytics" element={<ProtectedRoute><FlashcardAnalytics /></ProtectedRoute>} />
+          <Route path="/browse-decks" element={<ProtectedRoute><BrowseDecks /></ProtectedRoute>} />
             <Route path="/voice-history" element={<ProtectedRoute><VoiceHistory /></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

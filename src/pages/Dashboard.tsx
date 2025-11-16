@@ -8,6 +8,7 @@ import { BookOpen, Brain, TrendingUp, PlayCircle, MessageSquare, Layers, Users, 
 import { toast } from "sonner";
 import { Navigation } from "@/components/Navigation";
 import { SmartExamSuggestions } from "@/components/SmartExamSuggestions";
+import { StudyStreakWidget } from "@/components/StudyStreakWidget";
 
 const modules = [
   { id: "vocabulary", name: "Vocabulary", icon: BookOpen, description: "Word meanings and usage" },
@@ -84,6 +85,11 @@ const Dashboard = () => {
           <div className="mb-8">
             <h1 className="text-4xl font-bold">CSE Practice Platform</h1>
             <p className="text-muted-foreground mt-2">Welcome back, {user?.email}</p>
+          </div>
+
+          {/* Streak Widget */}
+          <div className="mb-6">
+            <StudyStreakWidget />
           </div>
 
           {/* Smart Exam Suggestions */}
