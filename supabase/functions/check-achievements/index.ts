@@ -71,6 +71,23 @@ serve(async (req) => {
       messageCount = count || 0;
     }
 
+    // Fetch flashcard stats
+    const { count: flashcardReviewCount } = await supabase
+      .from('flashcard_reviews')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id);
+
+    const { data: streakData } = await supabase
+      .from('study_streaks')
+      .select('current_streak')
+      .eq('user_id', user.id)
+      .single();
+
+    const { count: deckCount } = await supabase
+      .from('flashcard_decks')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id);
+
     const stats = {
       sessionCount: sessions?.length || 0,
       perfectScoreCount: sessions?.filter(s => s.score === s.total_questions).length || 0,
@@ -79,6 +96,9 @@ serve(async (req) => {
       averageScore: sessions && sessions.length > 0
         ? Math.round((sessions.reduce((sum, s) => sum + (s.score / s.total_questions) * 100, 0) / sessions.length))
         : 0,
+      flashcardReviewCount: flashcardReviewCount || 0,
+      currentStreak: streakData?.current_streak || 0,
+      deckCount: deckCount || 0,
     };
 
     // Check which achievements should be awarded
@@ -106,6 +126,15 @@ serve(async (req) => {
         case 'average_score':
           const minSessions = achievement.requirement_value >= 90 ? 10 : 5;
           shouldAward = stats.sessionCount >= minSessions && stats.averageScore >= achievement.requirement_value;
+          break;
+        case 'flashcard_reviews':
+          shouldAward = stats.flashcardReviewCount >= achievement.requirement_value;
+          break;
+        case 'study_streak':
+          shouldAward = stats.currentStreak >= achievement.requirement_value;
+          break;
+        case 'deck_count':
+          shouldAward = stats.deckCount >= achievement.requirement_value;
           break;
       }
 
