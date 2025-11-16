@@ -18,3 +18,9 @@ verify_jwt = true
 
 [functions.explain-question]
 verify_jwt = true
+
+[functions.reprocess-documents]
+verify_jwt = true
+
+[functions.parse-questions-ai]
+verify_jwt = true

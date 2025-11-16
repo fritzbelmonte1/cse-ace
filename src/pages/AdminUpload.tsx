@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { ArrowLeft, Upload, Trash2, RefreshCw, Loader2, CheckCircle2, FileUp, XCircle, Clock } from "lucide-react";
+import { ArrowLeft, Upload, Trash2, RefreshCw, Loader2, CheckCircle2, FileUp, XCircle, Clock, AlertCircle, FileText } from "lucide-react";
 import { ProcessingStatusBadge } from "@/components/ProcessingStatusBadge";
 import { Navigation } from "@/components/Navigation";
 
@@ -28,6 +28,8 @@ const AdminUpload = () => {
   const [loading, setLoading] = useState(true);
   const [aiParsing, setAiParsing] = useState(false);
   const [showOnlyNeedsReview, setShowOnlyNeedsReview] = useState(false);
+  const [isReprocessing, setIsReprocessing] = useState(false);
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
 
   useEffect(() => {
     fetchDocuments();
@@ -68,6 +70,89 @@ const AdminUpload = () => {
       toast.error("Failed to load documents");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleBulkReprocess = async () => {
+    if (selectedDocIds.length === 0) {
+      toast.error('No documents selected', {
+        description: 'Please select documents to reprocess'
+      });
+      return;
+    }
+
+    setIsReprocessing(true);
+    setUploadStatus('Re-evaluating quality scores...');
+
+    try {
+      const { data, error } = await supabase.functions.invoke('reprocess-documents', {
+        body: { documentIds: selectedDocIds }
+      });
+
+      if (error) throw error;
+
+      const results = data.results || [];
+      const successCount = results.filter((r: any) => r.success).length;
+      const failCount = results.filter((r: any) => !r.success).length;
+
+      await fetchDocuments();
+      setSelectedDocIds([]);
+
+      if (successCount > 0) {
+        toast.success('Quality Re-evaluation Complete!', {
+          description: `✅ ${successCount} documents reprocessed${failCount > 0 ? `\n⚠️ ${failCount} failed` : ''}`
+        });
+      } else {
+        toast.error('Re-evaluation Failed', {
+          description: `All ${failCount} documents failed to reprocess`
+        });
+      }
+    } catch (error: any) {
+      console.error('Bulk reprocess error:', error);
+      toast.error('Re-evaluation Failed', {
+        description: error.message || 'Failed to reprocess documents'
+      });
+    } finally {
+      setIsReprocessing(false);
+      setUploadStatus('');
+    }
+  };
+
+  const handleReprocessAll = async () => {
+    setIsReprocessing(true);
+    setUploadStatus('Re-evaluating all documents...');
+
+    try {
+      const { data, error } = await supabase.functions.invoke('reprocess-documents', {
+        body: { documentIds: null }
+      });
+
+      if (error) throw error;
+
+      const results = data.results || [];
+      const successCount = results.filter((r: any) => r.success).length;
+      const failCount = results.filter((r: any) => !r.success).length;
+
+      await fetchDocuments();
+      setSelectedDocIds([]);
+
+      if (successCount > 0) {
+        toast.success('Bulk Re-evaluation Complete!', {
+          description: `✅ ${successCount} documents reprocessed${failCount > 0 ? `\n⚠️ ${failCount} failed` : ''}`
+        });
+      } else {
+        toast.error('Re-evaluation Failed', {
+          description: 'No documents were successfully reprocessed'
+        });
+      }
+    } catch (error: any) {
+      console.error('Reprocess all error:', error);
+      toast.error('Re-evaluation Failed', {
+        description: error.message || 'Failed to reprocess documents'
+      });
+    } finally {
+      setIsReprocessing(false);
+      setUploadStatus('');
     }
   };
 
@@ -893,17 +978,46 @@ Q: Your question?{'\n'}A: Option A{'\n'}B: Option B{'\n'}C: Option C{'\n'}D: Opt
                 <CardTitle>Uploaded Documents</CardTitle>
                 <CardDescription>Manage your uploaded documents and quality scores</CardDescription>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
+                {selectedDocIds.length > 0 && (
+                  <>
+                    <Badge variant="secondary" className="px-3 py-1">
+                      {selectedDocIds.length} selected
+                    </Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleBulkReprocess}
+                      disabled={isReprocessing}
+                    >
+                      <RefreshCw className={`w-4 h-4 mr-2 ${isReprocessing ? 'animate-spin' : ''}`} />
+                      Re-evaluate Selected
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedDocIds([])}
+                    >
+                      Clear
+                    </Button>
+                  </>
+                )}
                 <Button 
                   variant={showOnlyNeedsReview ? "default" : "outline"}
+                  size="sm"
                   onClick={() => setShowOnlyNeedsReview(!showOnlyNeedsReview)}
                 >
-                  <Clock className="mr-2 h-4 w-4" />
+                  <AlertCircle className="mr-2 h-4 w-4" />
                   {showOnlyNeedsReview ? 'Show All' : 'Needs Review'}
                 </Button>
-                <Button variant="outline" onClick={handleReprocess}>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Reprocess Failed
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReprocessAll}
+                  disabled={isReprocessing}
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${isReprocessing ? 'animate-spin' : ''}`} />
+                  Re-evaluate All
                 </Button>
               </div>
             </div>
@@ -947,44 +1061,65 @@ Q: Your question?{'\n'}A: Option A{'\n'}B: Option B{'\n'}C: Option C{'\n'}D: Opt
                   };
 
                   return (
-                    <div 
+                    <Card 
                       key={doc.id} 
-                      className={`flex items-center justify-between p-4 border rounded-lg ${needsReview ? 'border-orange-500/50 bg-orange-500/5' : ''}`}
+                      className={`p-4 ${needsReview ? 'border-orange-500/50 bg-orange-500/5' : ''} ${selectedDocIds.includes(doc.id) ? 'ring-2 ring-primary' : ''}`}
                     >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium">{doc.file_name}</p>
-                          {needsReview && (
-                            <Badge variant="outline" className="border-orange-500 text-orange-700 dark:text-orange-400">
-                              <Clock className="h-3 w-3 mr-1" />
-                              Needs Review
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 mt-1 flex-wrap">
-                          <p className="text-sm text-muted-foreground">
-                            {doc.purpose} • {doc.module || 'N/A'}
-                          </p>
-                          <ProcessingStatusBadge 
-                            status={doc.processing_status || 'pending'} 
-                            errorMessage={doc.error_message}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3 flex-1">
+                          <input
+                            type="checkbox"
+                            checked={selectedDocIds.includes(doc.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedDocIds([...selectedDocIds, doc.id]);
+                              } else {
+                                setSelectedDocIds(selectedDocIds.filter(id => id !== doc.id));
+                              }
+                            }}
+                            className="w-4 h-4 rounded border-border cursor-pointer"
                           />
-                          {qualityScore !== null && qualityScore !== undefined && (
-                            <Badge variant={getQualityColor(qualityScore)}>
-                              {getQualityLabel(qualityScore)}
-                            </Badge>
-                          )}
-                          {metrics.total_questions && (
-                            <span className="text-xs text-muted-foreground">
-                              {metrics.complete_questions || 0}/{metrics.total_questions} complete
-                            </span>
-                          )}
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <FileText className="w-4 h-4 text-muted-foreground" />
+                              <h3 className="font-semibold">{doc.file_name}</h3>
+                              {needsReview && (
+                                <Badge variant="destructive" className="text-xs">
+                                  <AlertCircle className="w-3 h-3 mr-1" />
+                                  Review
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <p className="text-sm text-muted-foreground">
+                                {doc.purpose} • {doc.module || 'N/A'}
+                              </p>
+                              <ProcessingStatusBadge 
+                                status={doc.processing_status || 'pending'} 
+                                errorMessage={doc.error_message}
+                              />
+                              {qualityScore !== null && qualityScore !== undefined && (
+                                <Badge variant={getQualityColor(qualityScore)}>
+                                  {getQualityLabel(qualityScore)}
+                                </Badge>
+                              )}
+                              {metrics.completeQuestions !== undefined && metrics.totalExtracted !== undefined && (
+                                <span className="text-xs text-muted-foreground">
+                                  {metrics.completeQuestions}/{metrics.totalExtracted} complete
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDelete(doc.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
-                      <Button variant="destructive" size="icon" onClick={() => handleDelete(doc.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    </Card>
                   );
                 })}
               </div>
