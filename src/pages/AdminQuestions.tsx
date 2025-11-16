@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { ArrowLeft, Check, X, Edit2, Save, XCircle, CheckCircle, Clock, Search, Filter, Loader2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Check, X, Edit2, Save, XCircle, CheckCircle, Clock, Search, Filter, Loader2, AlertTriangle, History } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -21,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { QuestionVersionHistory } from "@/components/QuestionVersionHistory";
 
 const modules = [
   { id: "vocabulary", name: "Vocabulary" },
@@ -58,6 +59,7 @@ export default function AdminQuestions() {
   const [showBulkPreview, setShowBulkPreview] = useState(false);
   const [bulkAction, setBulkAction] = useState<"approve" | "reject" | null>(null);
   const [stats, setStats] = useState({ pending: 0, approved: 0, rejected: 0, highConf: 0 });
+  const [versionHistoryQuestionId, setVersionHistoryQuestionId] = useState<string | null>(null);
   
   // Filters
   const [moduleFilter, setModuleFilter] = useState<string>("all");
@@ -781,6 +783,15 @@ export default function AdminQuestions() {
 
                           <div className="flex flex-col gap-2 ml-4">
                             <Button
+                              onClick={() => setVersionHistoryQuestionId(question.id)}
+                              variant="outline"
+                              size="sm"
+                              className="gap-1"
+                              title="View Version History"
+                            >
+                              <History className="h-4 w-4" />
+                            </Button>
+                            <Button
                               onClick={() => startQuickEdit(question)}
                               variant="default"
                               size="sm"
@@ -921,6 +932,22 @@ export default function AdminQuestions() {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Version History Modal */}
+      <Dialog open={!!versionHistoryQuestionId} onOpenChange={(open) => !open && setVersionHistoryQuestionId(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
+          {versionHistoryQuestionId && (
+            <QuestionVersionHistory
+              questionId={versionHistoryQuestionId}
+              onClose={() => setVersionHistoryQuestionId(null)}
+              onRollback={() => {
+                fetchQuestions();
+                toast.success("Question rolled back successfully");
+              }}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>

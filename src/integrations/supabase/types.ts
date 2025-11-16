@@ -561,6 +561,71 @@ export type Database = {
         }
         Relationships: []
       }
+      question_versions: {
+        Row: {
+          change_summary: string | null
+          change_type: string
+          changed_at: string
+          changed_by: string | null
+          confidence_score: number | null
+          correct_answer: string
+          id: string
+          module: string
+          option_a: string
+          option_b: string
+          option_c: string
+          option_d: string
+          question: string
+          question_id: string
+          status: string | null
+          version_number: number
+        }
+        Insert: {
+          change_summary?: string | null
+          change_type: string
+          changed_at?: string
+          changed_by?: string | null
+          confidence_score?: number | null
+          correct_answer: string
+          id?: string
+          module: string
+          option_a: string
+          option_b: string
+          option_c: string
+          option_d: string
+          question: string
+          question_id: string
+          status?: string | null
+          version_number: number
+        }
+        Update: {
+          change_summary?: string | null
+          change_type?: string
+          changed_at?: string
+          changed_by?: string | null
+          confidence_score?: number | null
+          correct_answer?: string
+          id?: string
+          module?: string
+          option_a?: string
+          option_b?: string
+          option_c?: string
+          option_d?: string
+          question?: string
+          question_id?: string
+          status?: string | null
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "question_versions_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "extracted_questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_achievements: {
         Row: {
           achievement_id: string
@@ -690,6 +755,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      rollback_question_to_version: {
+        Args: { p_question_id: string; p_version_number: number }
+        Returns: Json
       }
     }
     Enums: {
