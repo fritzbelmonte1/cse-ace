@@ -7,9 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { CheckCircle2, XCircle, Clock, Award, TrendingUp, Loader2, Sparkles } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Award, TrendingUp, Loader2, Sparkles, ArrowLeftRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Navigation } from "@/components/Navigation";
+import { ExamComparison } from "@/components/ExamComparison";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function ExamResults() {
   const { examId } = useParams();
@@ -17,9 +19,14 @@ export default function ExamResults() {
   const [exam, setExam] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [generatingFeedback, setGeneratingFeedback] = useState(false);
+  const [showComparison, setShowComparison] = useState(false);
+  const [comparisonExamId, setComparisonExamId] = useState<string>("");
+  const [comparisonExam, setComparisonExam] = useState<any>(null);
+  const [availableExams, setAvailableExams] = useState<any[]>([]);
 
   useEffect(() => {
     loadExam();
+    loadAvailableExams();
   }, [examId]);
 
   const loadExam = async () => {
@@ -46,16 +53,56 @@ export default function ExamResults() {
     }
   };
 
+  const loadAvailableExams = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from("mock_exams")
+        .select("id, module, exam_type, score, total_questions, completed_at")
+        .eq("user_id", user.id)
+        .eq("status", "completed")
+        .neq("id", examId)
+        .order("completed_at", { ascending: false })
+        .limit(20);
+
+      if (error) throw error;
+      setAvailableExams(data || []);
+    } catch (error) {
+      console.error("Error loading available exams:", error);
+    }
+  };
+
+  const handleCompareExam = async () => {
+    if (!comparisonExamId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from("mock_exams")
+        .select("*")
+        .eq("id", comparisonExamId)
+        .single();
+
+      if (error) throw error;
+      setComparisonExam(data);
+      setShowComparison(true);
+    } catch (error) {
+      console.error("Error loading comparison exam:", error);
+      toast.error("Failed to load comparison exam");
+    }
+  };
+
   const handleGenerateFeedback = async () => {
     setGeneratingFeedback(true);
     try {
-      const { data, error } = await supabase.functions.invoke("generate-exam-feedback", {
+      const { data, error } = await supabase.functions.invoke("ai-study-recommendations", {
         body: { examId }
       });
 
       if (error) throw error;
 
-      setExam((prev: any) => ({ ...prev, ai_feedback: data.feedback }));
+      setExam((prev: any) => ({ ...prev, ai_feedback: data.recommendations }));
       toast.success("AI feedback generated!");
     } catch (error: any) {
       console.error("Error generating feedback:", error);
@@ -163,6 +210,58 @@ export default function ExamResults() {
             )}
           </CardContent>
         </Card>
+
+        {/* Exam Comparison */}
+        {availableExams.length > 0 && !showComparison && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ArrowLeftRight className="w-5 w-5" />
+                Compare with Previous Exam
+              </CardTitle>
+              <CardDescription>See how you've improved</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-3">
+                <Select value={comparisonExamId} onValueChange={setComparisonExamId}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Select an exam to compare" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableExams.map((e) => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.module} - {Math.round((e.score / e.total_questions) * 100)}% ({new Date(e.completed_at).toLocaleDateString()})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button onClick={handleCompareExam} disabled={!comparisonExamId}>
+                  Compare
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Show Comparison */}
+        {showComparison && comparisonExam && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <ArrowLeftRight className="w-5 w-5" />
+                  Exam Comparison
+                </CardTitle>
+                <Button variant="outline" size="sm" onClick={() => setShowComparison(false)}>
+                  Hide Comparison
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <ExamComparison exam1={comparisonExam} exam2={exam} />
+            </CardContent>
+          </Card>
+        )}
 
         {/* Question Review */}
         <Card>

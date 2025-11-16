@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { BookOpen, Brain, TrendingUp, PlayCircle, MessageSquare, Layers, Users, Target as TargetIcon, Pause } from "lucide-react";
 import { toast } from "sonner";
 import { Navigation } from "@/components/Navigation";
+import { SmartExamSuggestions } from "@/components/SmartExamSuggestions";
 
 const modules = [
   { id: "vocabulary", name: "Vocabulary", icon: BookOpen, description: "Word meanings and usage" },
@@ -85,8 +86,11 @@ const Dashboard = () => {
             <p className="text-muted-foreground mt-2">Welcome back, {user?.email}</p>
           </div>
 
-        {inProgressExams.length > 0 && (
-          <Card className="mb-6 border-primary/50 bg-primary/5">
+          {/* Smart Exam Suggestions */}
+          <SmartExamSuggestions />
+
+          {inProgressExams.length > 0 && (
+            <Card className="mb-6 border-primary/50 bg-primary/5">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <PlayCircle className="h-5 w-5 text-primary" />

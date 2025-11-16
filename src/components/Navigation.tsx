@@ -68,6 +68,7 @@ export function Navigation() {
     { path: "/ai-assistant", label: "AI Assistant", icon: MessageSquare },
     { path: "/flashcards", label: "Flashcards", icon: Layers },
     { path: "/analytics", label: "Analytics", icon: BarChart },
+    { path: "/exam-analytics", label: "Exam Analytics", icon: BarChart },
     { path: "/goals", label: "Goals", icon: Target },
   ];
 

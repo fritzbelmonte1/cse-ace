@@ -9,8 +9,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Clock, Flag, Loader2, Menu, Pause, Play } from "lucide-react";
+import { Clock, Flag, Loader2, Menu, Pause, Play, AlertCircle, HelpCircle, StickyNote } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Navigation } from "@/components/Navigation";
 
@@ -27,6 +29,9 @@ export default function ExamInterface() {
   const [submitting, setSubmitting] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [pauseStartTime, setPauseStartTime] = useState<number | null>(null);
+  const [questionNotes, setQuestionNotes] = useState<Record<number, { flag?: string; note?: string }>>({});
+  const [showNoteDialog, setShowNoteDialog] = useState(false);
+  const [currentNote, setCurrentNote] = useState("");
 
   useEffect(() => {
     loadExam();
@@ -93,6 +98,10 @@ export default function ExamInterface() {
       const loadedAnswers = data.answers as Record<number, string> || {};
       setAnswers(loadedAnswers);
       
+      // Load question notes
+      const loadedNotes = (data.question_notes as Record<number, { flag?: string; note?: string }>) || {};
+      setQuestionNotes(loadedNotes);
+      
       // Check if exam was previously paused
       if (data.paused_at && data.status === "paused") {
         setIsPaused(true);
@@ -111,9 +120,12 @@ export default function ExamInterface() {
     if (!exam) return;
     await supabase
       .from("mock_exams")
-      .update({ answers })
+      .update({ 
+        answers,
+        question_notes: questionNotes 
+      })
       .eq("id", examId);
-  }, [exam, examId, answers]);
+  }, [exam, examId, answers, questionNotes]);
 
   const handleAnswerChange = (value: string) => {
     setAnswers(prev => ({ ...prev, [currentQuestionIndex]: value }));
@@ -129,6 +141,35 @@ export default function ExamInterface() {
       }
       return newSet;
     });
+  };
+
+  const handleFlagQuestion = (flag: string) => {
+    setQuestionNotes(prev => ({
+      ...prev,
+      [currentQuestionIndex]: {
+        ...prev[currentQuestionIndex],
+        flag
+      }
+    }));
+    toast.success(`Question flagged as ${flag}`);
+  };
+
+  const handleSaveNote = () => {
+    setQuestionNotes(prev => ({
+      ...prev,
+      [currentQuestionIndex]: {
+        ...prev[currentQuestionIndex],
+        note: currentNote
+      }
+    }));
+    setShowNoteDialog(false);
+    setCurrentNote("");
+    toast.success("Note saved");
+  };
+
+  const handleOpenNoteDialog = () => {
+    setCurrentNote(questionNotes[currentQuestionIndex]?.note || "");
+    setShowNoteDialog(true);
   };
 
   const handlePauseExam = async () => {
@@ -496,6 +537,42 @@ export default function ExamInterface() {
                 </Label>
               </div>
 
+              {/* Question Flags */}
+              <div className="flex flex-wrap gap-2 pt-2">
+                <Button
+                  variant={questionNotes[currentQuestionIndex]?.flag === "difficult" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleFlagQuestion("difficult")}
+                >
+                  <AlertCircle className="w-4 h-4 mr-1" />
+                  Difficult
+                </Button>
+                <Button
+                  variant={questionNotes[currentQuestionIndex]?.flag === "unsure" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleFlagQuestion("unsure")}
+                >
+                  <HelpCircle className="w-4 h-4 mr-1" />
+                  Unsure
+                </Button>
+                <Button
+                  variant={questionNotes[currentQuestionIndex]?.flag === "review" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleFlagQuestion("review")}
+                >
+                  <Flag className="w-4 h-4 mr-1" />
+                  Review Later
+                </Button>
+                <Button
+                  variant={questionNotes[currentQuestionIndex]?.note ? "default" : "outline"}
+                  size="sm"
+                  onClick={handleOpenNoteDialog}
+                >
+                  <StickyNote className="w-4 h-4 mr-1" />
+                  {questionNotes[currentQuestionIndex]?.note ? "Edit Note" : "Add Note"}
+                </Button>
+              </div>
+
               {/* Desktop Navigation */}
               <div className="hidden sm:flex justify-between pt-4">
                 <Button
@@ -651,6 +728,32 @@ export default function ExamInterface() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Note Dialog */}
+      <Dialog open={showNoteDialog} onOpenChange={setShowNoteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Note to Question {currentQuestionIndex + 1}</DialogTitle>
+            <DialogDescription>
+              Add a personal note or observation about this question for future review.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={currentNote}
+            onChange={(e) => setCurrentNote(e.target.value)}
+            placeholder="e.g., Need to review this concept, similar to question 15..."
+            className="min-h-[120px]"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNoteDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveNote}>
+              Save Note
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       </div>
     </>
   );
