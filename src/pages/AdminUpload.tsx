@@ -1341,6 +1341,15 @@ Q: Your question?{'\n'}A: Option A{'\n'}B: Option B{'\n'}C: Option C{'\n'}D: Opt
                   <RefreshCw className={`w-4 h-4 mr-2 ${isReprocessing ? 'animate-spin' : ''}`} />
                   Re-evaluate All
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReprocess}
+                  disabled={isReprocessing}
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${isReprocessing ? 'animate-spin' : ''}`} />
+                  Fix Stuck RAG Docs
+                </Button>
               </div>
             </div>
           </CardHeader>

@@ -49,38 +49,62 @@ serve(async (req) => {
 
     console.log(`Admin ${user.id} verified for reprocessing`);
 
-    // Find all RAG documents that are marked processed but have no chunks
+    // Find RAG documents that need reprocessing:
+    // 1. Marked processed but have no chunks
+    // 2. Stuck in "processing" status for more than 10 minutes
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    
     const { data: ragDocs, error: docsError } = await supabase
       .from('documents')
-      .select('id, file_name, purpose')
-      .eq('purpose', 'rag')
-      .eq('processed', true);
+      .select('id, file_name, purpose, processing_status, created_at, processed')
+      .eq('purpose', 'rag');
 
     if (docsError) {
       throw docsError;
     }
 
+    // Filter for documents that need reprocessing
+    const docsToReprocess = (ragDocs || []).filter(doc => {
+      const isStuck = doc.processing_status === 'processing' && 
+                      new Date(doc.created_at) < new Date(tenMinutesAgo);
+      const isProcessedNoChunks = doc.processed === true;
+      return isStuck || isProcessedNoChunks;
+    });
+
     const reprocessedDocs = [];
     
-    for (const doc of ragDocs || []) {
-      // Check if document has chunks
-      const { count, error: countError } = await supabase
-        .from('document_chunks')
-        .select('id', { count: 'exact', head: true })
-        .eq('document_id', doc.id);
+    for (const doc of docsToReprocess) {
+      // Check if document has chunks (skip check for stuck documents)
+      const isStuck = doc.processing_status === 'processing' && 
+                      new Date(doc.created_at) < new Date(tenMinutesAgo);
+      
+      let shouldReprocess = isStuck;
+      
+      if (!shouldReprocess) {
+        const { count, error: countError } = await supabase
+          .from('document_chunks')
+          .select('id', { count: 'exact', head: true })
+          .eq('document_id', doc.id);
 
-      if (countError) {
-        console.error(`Error checking chunks for ${doc.id}:`, countError);
-        continue;
+        if (countError) {
+          console.error(`Error checking chunks for ${doc.id}:`, countError);
+          continue;
+        }
+
+        shouldReprocess = count === 0;
       }
 
-      if (count === 0) {
-        console.log(`Reprocessing document: ${doc.file_name} (${doc.id})`);
+      if (shouldReprocess) {
+        console.log(`Reprocessing ${isStuck ? 'stuck' : 'incomplete'} document: ${doc.file_name} (${doc.id})`);
         
-        // Mark as unprocessed
+        // Mark as unprocessed and reset status
         await supabase
           .from('documents')
-          .update({ processed: false })
+          .update({ 
+            processed: false,
+            processing_status: 'pending',
+            error_message: null
+          })
           .eq('id', doc.id);
 
         // Trigger reprocessing
