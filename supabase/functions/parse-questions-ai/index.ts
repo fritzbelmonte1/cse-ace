@@ -387,9 +387,30 @@ serve(async (req) => {
     const completeCount = validatedQuestions.filter(q => q.validation.isComplete).length;
     const incompleteCount = validatedQuestions.length - completeCount;
     
+    // Calculate quality score (0-100)
+    const completionRate = validatedQuestions.length > 0 ? (completeCount / validatedQuestions.length) : 0;
+    const hasMinimumQuestions = validatedQuestions.length >= 5; // At least 5 questions expected
+    const lowIncompleteRate = incompleteCount / Math.max(validatedQuestions.length, 1) < 0.3; // Less than 30% incomplete
+    
+    // Quality score formula:
+    // - 60% based on completion rate
+    // - 20% based on minimum question threshold
+    // - 20% based on low incomplete rate
+    let qualityScore = (completionRate * 60) + 
+                       (hasMinimumQuestions ? 20 : (validatedQuestions.length / 5) * 20) +
+                       (lowIncompleteRate ? 20 : 0);
+    qualityScore = Math.round(Math.min(100, Math.max(0, qualityScore)));
+    
+    // Determine if needs review
+    const needsReview = qualityScore < 70 || // Low quality score
+                        (incompleteCount / Math.max(validatedQuestions.length, 1)) > 0.3 || // >30% incomplete
+                        validatedQuestions.length < 3 || // Very few questions
+                        completeCount === 0; // No complete questions
+    
     const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
     
     console.log(`Extraction complete in ${elapsedTime}s: ${validatedQuestions.length} questions (${completeCount} complete, ${incompleteCount} incomplete)`);
+    console.log(`Quality Score: ${qualityScore}/100 | Needs Review: ${needsReview}`);
 
     return new Response(
       JSON.stringify({ 
@@ -399,7 +420,23 @@ serve(async (req) => {
           completeQuestions: completeCount,
           incompleteQuestions: incompleteCount,
           processingTimeSeconds: parseFloat(elapsedTime),
-          chunksProcessed: estimatedWords > CHUNK_SIZE ? Math.ceil(estimatedWords / CHUNK_SIZE) : 1
+          chunksProcessed: estimatedWords > CHUNK_SIZE ? Math.ceil(estimatedWords / CHUNK_SIZE) : 1,
+          qualityScore,
+          needsReview,
+          qualityMetrics: {
+            completionRate: Math.round(completionRate * 100),
+            hasMinimumQuestions,
+            lowIncompleteRate,
+            validationIssues: validatedQuestions.filter(q => !q.validation.isComplete).map(q => ({
+              question: q.question?.substring(0, 50) + '...',
+              issues: {
+                missingQuestion: !q.validation.hasQuestion,
+                missingOptions: !q.validation.hasAllOptions,
+                missingAnswer: !q.validation.hasAnswer,
+                duplicateOptions: !q.validation.optionsDistinct
+              }
+            }))
+          }
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
