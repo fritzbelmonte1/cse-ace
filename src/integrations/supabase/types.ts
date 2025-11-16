@@ -178,37 +178,46 @@ export type Database = {
         Row: {
           created_at: string
           error_message: string | null
+          extraction_metrics: Json | null
           file_name: string
           file_path: string
           id: string
           module: string | null
+          needs_review: boolean | null
           processed: boolean | null
           processing_status: string | null
           purpose: string
+          quality_score: number | null
           uploaded_by: string | null
         }
         Insert: {
           created_at?: string
           error_message?: string | null
+          extraction_metrics?: Json | null
           file_name: string
           file_path: string
           id?: string
           module?: string | null
+          needs_review?: boolean | null
           processed?: boolean | null
           processing_status?: string | null
           purpose: string
+          quality_score?: number | null
           uploaded_by?: string | null
         }
         Update: {
           created_at?: string
           error_message?: string | null
+          extraction_metrics?: Json | null
           file_name?: string
           file_path?: string
           id?: string
           module?: string | null
+          needs_review?: boolean | null
           processed?: boolean | null
           processing_status?: string | null
           purpose?: string
+          quality_score?: number | null
           uploaded_by?: string | null
         }
         Relationships: []

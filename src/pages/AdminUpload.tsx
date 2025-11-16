@@ -27,6 +27,7 @@ const AdminUpload = () => {
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [aiParsing, setAiParsing] = useState(false);
+  const [showOnlyNeedsReview, setShowOnlyNeedsReview] = useState(false);
 
   useEffect(() => {
     fetchDocuments();
@@ -219,7 +220,11 @@ const AdminUpload = () => {
       setUploadProgress(70);
       setUploadStatus("Validating and saving questions...");
 
-      // Create document record
+      // Calculate quality score for document
+      const docQualityScore = metadata.qualityScore || 0;
+      const docNeedsReview = metadata.needsReview || false;
+
+      // Create document record with quality metrics
       const { data: docData, error: docError } = await supabase
         .from('documents')
         .insert({
@@ -229,7 +234,17 @@ const AdminUpload = () => {
           purpose: 'questions',
           module,
           processed: true,
-          processing_status: 'completed'
+          processing_status: 'completed',
+          quality_score: docQualityScore,
+          needs_review: docNeedsReview,
+          extraction_metrics: {
+            total_questions: metadata.totalExtracted,
+            complete_questions: metadata.completeQuestions,
+            incomplete_questions: metadata.incompleteQuestions,
+            completion_rate: metadata.qualityMetrics?.completionRate,
+            processing_time_seconds: metadata.processingTimeSeconds,
+            chunks_processed: metadata.chunksProcessed
+          }
         })
         .select()
         .maybeSingle();
@@ -281,15 +296,32 @@ const AdminUpload = () => {
         chunks: metadata.chunksProcessed
       });
 
-      // Enhanced success message with statistics
-      toast.success(`✨ Enhanced AI Extraction Complete!`, {
-        description: `${data.questions.length} questions extracted in ${metadata.processingTimeSeconds || 0}s
-        
+      // Enhanced success message with quality scoring
+      const aiQualityScore = metadata.qualityScore || 0;
+      const aiNeedsReview = metadata.needsReview || false;
+
+      if (aiNeedsReview || aiQualityScore < 70) {
+        toast.warning(`⚠️ Extraction Complete - Review Needed`, {
+          description: `Quality Score: ${aiQualityScore}/100
+          
+${data.questions.length} questions extracted in ${metadata.processingTimeSeconds || 0}s
+✅ ${approvedCount} complete | ⏳ ${pendingCount} incomplete
+
+${aiQualityScore < 50 ? '🔴 Low quality: Many questions incomplete' : aiQualityScore < 70 ? '🟡 Medium quality: Some issues detected' : ''}
+📋 Please review and complete missing data`,
+          duration: 8000,
+        });
+      } else {
+        toast.success(`✨ High-Quality Extraction Complete!`, {
+          description: `Quality Score: ${aiQualityScore}/100
+          
+${data.questions.length} questions extracted in ${metadata.processingTimeSeconds || 0}s
 ✅ ${approvedCount} auto-approved (ready for practice)
-${pendingCount > 0 ? `⏳ ${pendingCount} need review (missing data)` : ''}
-${metadata.chunksProcessed > 1 ? `📄 Processed ${metadata.chunksProcessed} document chunks` : ''}`,
-        duration: 6000,
-      });
+${pendingCount > 0 ? `⏳ ${pendingCount} need review` : ''}
+${metadata.chunksProcessed > 1 ? `📄 Processed ${metadata.chunksProcessed} chunks` : ''}`,
+          duration: 6000,
+        });
+      }
 
       setPastedText("");
       setUploadStatus("");
@@ -438,6 +470,10 @@ ${metadata.chunksProcessed > 1 ? `📄 Processed ${metadata.chunksProcessed} doc
         setUploadStatus("Creating document record for pasted questions...");
         setUploadProgress(50);
 
+        // Calculate quality score for pasted upload metadata
+        const uploadQualityScore = metadata.qualityScore || 0;
+        const uploadNeedsReview = metadata.needsReview || false;
+
         const { data: docData, error: docError } = await supabase
           .from('documents')
           .insert({
@@ -447,7 +483,17 @@ ${metadata.chunksProcessed > 1 ? `📄 Processed ${metadata.chunksProcessed} doc
             purpose: 'questions',
             module,
             processed: true,
-            processing_status: 'completed'
+            processing_status: 'completed',
+            quality_score: uploadQualityScore,
+            needs_review: uploadNeedsReview,
+            extraction_metrics: {
+              total_questions: metadata.totalExtracted,
+              complete_questions: metadata.completeQuestions,
+              incomplete_questions: metadata.incompleteQuestions,
+              completion_rate: metadata.qualityMetrics?.completionRate,
+              processing_time_seconds: metadata.processingTimeSeconds,
+              chunks_processed: metadata.chunksProcessed
+            }
           })
           .select()
           .maybeSingle();
@@ -497,14 +543,32 @@ ${metadata.chunksProcessed > 1 ? `📄 Processed ${metadata.chunksProcessed} doc
           chunks: metadata.chunksProcessed
         });
         
-        toast.success(`✨ Enhanced AI Extraction Complete!`, {
-          description: `${aiData.questions.length} questions in ${metadata.processingTimeSeconds || 0}s
-          
+        // Show appropriate message based on quality
+        const pasteQualityScore = metadata.qualityScore || 0;
+        const pasteNeedsReview = metadata.needsReview || false;
+
+        if (pasteNeedsReview || pasteQualityScore < 70) {
+          toast.warning(`⚠️ Extraction Complete - Review Needed`, {
+            description: `Quality Score: ${pasteQualityScore}/100
+
+${aiData.questions.length} questions in ${metadata.processingTimeSeconds || 0}s
+✅ ${approvedCount} complete | ⏳ ${pendingCount} incomplete
+
+${pasteQualityScore < 50 ? '🔴 Low quality: Many questions incomplete' : pasteQualityScore < 70 ? '🟡 Medium quality: Some issues detected' : ''}
+📋 Please review in Admin Questions panel`,
+            duration: 8000,
+          });
+        } else {
+          toast.success(`✨ High-Quality Extraction Complete!`, {
+            description: `Quality Score: ${pasteQualityScore}/100
+
+${aiData.questions.length} questions in ${metadata.processingTimeSeconds || 0}s
 ✅ ${approvedCount} auto-approved (ready for practice)
 ${pendingCount > 0 ? `⏳ ${pendingCount} need review` : ''}
-${metadata.chunksProcessed > 1 ? `📄 ${metadata.chunksProcessed} chunks processed` : ''}`,
-          duration: 6000,
-        });
+${metadata.chunksProcessed > 1 ? `📄 ${metadata.chunksProcessed} chunks` : ''}`,
+            duration: 6000,
+          });
+        }
         setPastedText("");
         setUploading(false);
         setUploadProgress(0);
@@ -827,12 +891,21 @@ Q: Your question?{'\n'}A: Option A{'\n'}B: Option B{'\n'}C: Option C{'\n'}D: Opt
             <div className="flex justify-between items-center">
               <div>
                 <CardTitle>Uploaded Documents</CardTitle>
-                <CardDescription>Manage your uploaded documents</CardDescription>
+                <CardDescription>Manage your uploaded documents and quality scores</CardDescription>
               </div>
-              <Button variant="outline" onClick={handleReprocess}>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Reprocess Failed
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  variant={showOnlyNeedsReview ? "default" : "outline"}
+                  onClick={() => setShowOnlyNeedsReview(!showOnlyNeedsReview)}
+                >
+                  <Clock className="mr-2 h-4 w-4" />
+                  {showOnlyNeedsReview ? 'Show All' : 'Needs Review'}
+                </Button>
+                <Button variant="outline" onClick={handleReprocess}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Reprocess Failed
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -842,29 +915,81 @@ Q: Your question?{'\n'}A: Option A{'\n'}B: Option B{'\n'}C: Option C{'\n'}D: Opt
               </div>
             ) : documents.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">No documents uploaded yet</p>
-            ) : (
+            ) : (() => {
+              const filteredDocs = showOnlyNeedsReview 
+                ? documents.filter(doc => doc.needs_review) 
+                : documents;
+              
+              return filteredDocs.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  {showOnlyNeedsReview ? 'No documents need review 🎉' : 'No documents uploaded yet'}
+                </p>
+              ) : (
               <div className="space-y-2">
-                {documents.map((doc) => (
-                  <div key={doc.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex-1">
-                      <p className="font-medium">{doc.file_name}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <p className="text-sm text-muted-foreground">
-                          {doc.purpose} • {doc.module || 'N/A'}
-                        </p>
-                        <ProcessingStatusBadge 
-                          status={doc.processing_status || 'pending'} 
-                          errorMessage={doc.error_message}
-                        />
+                {filteredDocs.map((doc) => {
+                  const qualityScore = doc.quality_score;
+                  const needsReview = doc.needs_review;
+                  const metrics = doc.extraction_metrics || {};
+                  
+                  // Determine quality color
+                  const getQualityColor = (score: number | null) => {
+                    if (score === null || score === undefined) return 'secondary';
+                    if (score >= 80) return 'default'; // green-ish
+                    if (score >= 70) return 'secondary'; // yellow-ish
+                    return 'destructive'; // red
+                  };
+                  
+                  const getQualityLabel = (score: number | null) => {
+                    if (score === null || score === undefined) return 'N/A';
+                    if (score >= 80) return `✅ ${score}%`;
+                    if (score >= 70) return `⚠️ ${score}%`;
+                    return `🔴 ${score}%`;
+                  };
+
+                  return (
+                    <div 
+                      key={doc.id} 
+                      className={`flex items-center justify-between p-4 border rounded-lg ${needsReview ? 'border-orange-500/50 bg-orange-500/5' : ''}`}
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{doc.file_name}</p>
+                          {needsReview && (
+                            <Badge variant="outline" className="border-orange-500 text-orange-700 dark:text-orange-400">
+                              <Clock className="h-3 w-3 mr-1" />
+                              Needs Review
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <p className="text-sm text-muted-foreground">
+                            {doc.purpose} • {doc.module || 'N/A'}
+                          </p>
+                          <ProcessingStatusBadge 
+                            status={doc.processing_status || 'pending'} 
+                            errorMessage={doc.error_message}
+                          />
+                          {qualityScore !== null && qualityScore !== undefined && (
+                            <Badge variant={getQualityColor(qualityScore)}>
+                              {getQualityLabel(qualityScore)}
+                            </Badge>
+                          )}
+                          {metrics.total_questions && (
+                            <span className="text-xs text-muted-foreground">
+                              {metrics.complete_questions || 0}/{metrics.total_questions} complete
+                            </span>
+                          )}
+                        </div>
                       </div>
+                      <Button variant="destructive" size="icon" onClick={() => handleDelete(doc.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
-                    <Button variant="destructive" size="icon" onClick={() => handleDelete(doc.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-            )}
+              );
+            })()}
           </CardContent>
         </Card>
       </div>
