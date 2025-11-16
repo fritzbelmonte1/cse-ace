@@ -396,6 +396,10 @@ export default function AdminQuestions() {
             </div>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate("/admin/create-question")}>
+              <Edit2 className="w-4 h-4 mr-2" />
+              Create Question
+            </Button>
             <Button variant="outline" onClick={() => navigate("/admin/recategorize")}>
               Bulk Recategorize
             </Button>
