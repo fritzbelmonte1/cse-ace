@@ -12,6 +12,7 @@ import AdminUsers from "./pages/AdminUsers";
 import AdminSettings from "./pages/AdminSettings";
 import AdminQuestions from "./pages/AdminQuestions";
 import AdminRecategorize from "./pages/AdminRecategorize";
+import ManualQuestionCreator from "./pages/ManualQuestionCreator";
 import Auth from "./pages/Auth";
 import AIAssistant from "./pages/AIAssistant";
 import Profile from "./pages/Profile";
@@ -86,6 +87,14 @@ const App = () => (
             element={
               <ProtectedRoute requiredRole="admin">
                 <AdminRecategorize />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/create-question"
+            element={
+              <ProtectedRoute requiredRole="admin">
+                <ManualQuestionCreator />
               </ProtectedRoute>
             }
           />

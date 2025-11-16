@@ -24,3 +24,6 @@ verify_jwt = true
 
 [functions.parse-questions-ai]
 verify_jwt = true
+
+[functions.reextract-questions]
+verify_jwt = true
