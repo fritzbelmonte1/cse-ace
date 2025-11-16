@@ -6,13 +6,46 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Sanitize text to remove characters that PostgreSQL TEXT columns cannot handle
+// Enhanced sanitization to handle problematic Unicode and special characters
 function sanitizeText(text: string): string {
-  return text
-    .replace(/\u0000/g, '') // Remove null bytes
-    .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
-    .replace(/\s+/g, ' ') // Normalize whitespace
+  let sanitized = text
+    // Remove null bytes and control characters
+    .replace(/\u0000/g, '')
+    .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '')
+    
+    // Remove unpaired Unicode surrogates (causes JSON errors)
+    .replace(/[\uD800-\uDFFF]/g, '')
+    
+    // Replace problematic Unicode characters
+    .replace(/[\uFFFE\uFFFF]/g, '')
+    
+    // Normalize different types of whitespace
+    .replace(/[\u2000-\u200B\u202F\u205F\u3000]/g, ' ')
+    
+    // Remove zero-width characters
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    
+    // Normalize line breaks
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    
+    // Collapse multiple spaces/newlines
+    .replace(/\s+/g, ' ')
     .trim();
+  
+  // Additional validation: ensure valid UTF-8
+  try {
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    const bytes = encoder.encode(sanitized);
+    sanitized = decoder.decode(bytes);
+  } catch (e) {
+    console.warn('UTF-8 validation failed, applying aggressive cleaning');
+    // If still invalid, keep only ASCII printable characters
+    sanitized = sanitized.replace(/[^\x20-\x7E\n]/g, '');
+  }
+  
+  return sanitized;
 }
 
 serve(async (req) => {
@@ -396,23 +429,51 @@ Your goal: Extract the MAXIMUM number of questions possible. When in doubt, extr
 
       console.log(`Created ${chunks.length} chunks for document`);
 
-      // Insert chunks without embeddings
+      // Insert chunks without embeddings with validation
+      let successfulChunks = 0;
+      let failedChunks = 0;
+      
       for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        
+        // Skip empty chunks
+        if (!chunk || chunk.trim().length === 0) {
+          console.log(`Skipping empty chunk ${i}`);
+          continue;
+        }
+        
+        // Additional validation: ensure chunk is valid string
+        if (typeof chunk !== 'string') {
+          console.error(`Chunk ${i} is not a string, skipping`);
+          failedChunks++;
+          continue;
+        }
+        
         const { error: insertError } = await supabase
           .from('document_chunks')
           .insert({
             document_id: documentId,
-            content: chunks[i],
+            content: chunk,
             chunk_index: i
           });
 
         if (insertError) {
           console.error(`Failed to insert chunk ${i}:`, insertError);
-          throw new Error(`Chunk insert failed: ${insertError.message}`);
+          console.error(`Chunk preview (first 100 chars): ${chunk.substring(0, 100)}`);
+          failedChunks++;
+          // Continue processing remaining chunks instead of throwing
+          continue;
         }
+        
+        successfulChunks++;
       }
 
-      console.log(`Successfully inserted ${chunks.length} chunks (no embeddings)`);
+      console.log(`Chunk processing complete: ${successfulChunks} successful, ${failedChunks} failed out of ${chunks.length} total`);
+      
+      // If more than 90% of chunks failed, mark as failed
+      if (failedChunks > chunks.length * 0.1) {
+        throw new Error(`Too many failed chunks: ${failedChunks}/${chunks.length}`);
+      }
     }
 
     // Mark as processed
