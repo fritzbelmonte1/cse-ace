@@ -47,14 +47,15 @@ export default function ExamInterface() {
     return () => clearInterval(timer);
   }, [exam]);
 
-  // Auto-save every 30 seconds
+  // Auto-save with dynamic interval based on exam length
   useEffect(() => {
     if (!exam) return;
+    const saveInterval = exam.total_questions >= 200 ? 15000 : 30000; // 15s for long exams, 30s for shorter
     const autoSave = setInterval(() => {
       saveProgress();
-    }, 30000);
+    }, saveInterval);
     return () => clearInterval(autoSave);
-  }, [exam, answers]);
+  }, [exam, answers]); // saveProgress is stable from useCallback
 
   // Prevent accidental navigation
   useEffect(() => {
@@ -181,8 +182,15 @@ export default function ExamInterface() {
 
   const questions = exam.questions_data;
   const currentQuestion = questions[currentQuestionIndex];
-  const progress = ((Object.keys(answers).length / questions.length) * 100);
+  const answeredCount = Object.keys(answers).length;
+  const progress = ((answeredCount / questions.length) * 100);
   const isStrictMode = exam.exam_type === "strict";
+  
+  // Calculate section breaks for long exams (every 50 questions)
+  const isLongExam = exam.total_questions >= 200;
+  const sectionSize = 50;
+  const currentSection = Math.floor(currentQuestionIndex / sectionSize) + 1;
+  const isSectionStart = currentQuestionIndex % sectionSize === 0 && currentQuestionIndex > 0;
 
   const getTimerColor = () => {
     if (!timeRemaining || exam.exam_type === "practice") return "text-foreground";
@@ -240,28 +248,46 @@ export default function ExamInterface() {
           <Card className="hidden lg:block lg:col-span-1 h-fit">
             <CardContent className="p-4">
               <h3 className="font-semibold mb-3">Questions</h3>
+              {isLongExam && (
+                <div className="mb-4 p-2 bg-primary/10 rounded-md">
+                  <p className="text-xs font-medium">Section {currentSection} of {Math.ceil(exam.total_questions / sectionSize)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Questions {(currentSection - 1) * sectionSize + 1}-{Math.min(currentSection * sectionSize, exam.total_questions)}
+                  </p>
+                </div>
+              )}
               <div className="grid grid-cols-5 gap-2">
-                {questions.map((_: any, index: number) => (
-                  <button
-                    key={index}
-                    onClick={() => {
-                      if (!isStrictMode || index > currentQuestionIndex) {
-                        setCurrentQuestionIndex(index);
-                      }
-                    }}
-                    disabled={isStrictMode && index < currentQuestionIndex}
-                    className={cn(
-                      "aspect-square rounded border-2 text-sm font-semibold transition-colors min-h-[44px]",
-                      index === currentQuestionIndex && "ring-2 ring-primary ring-offset-2",
-                      answers[index] && "bg-green-100 border-green-600 text-green-900 dark:bg-green-900/20 dark:text-green-100",
-                      markedForReview.has(index) && "bg-yellow-100 border-yellow-600 text-yellow-900 dark:bg-yellow-900/20 dark:text-yellow-100",
-                      !answers[index] && !markedForReview.has(index) && "border-border hover:bg-accent",
-                      isStrictMode && index < currentQuestionIndex && "opacity-50 cursor-not-allowed"
-                    )}
-                  >
-                    {index + 1}
-                  </button>
-                ))}
+                {questions.map((_: any, index: number) => {
+                  const isNewSection = isLongExam && index % sectionSize === 0 && index > 0;
+                  return (
+                    <>
+                      {isNewSection && (
+                        <div className="col-span-5 my-2 border-t pt-2">
+                          <p className="text-xs font-medium text-muted-foreground">Section {Math.floor(index / sectionSize) + 1}</p>
+                        </div>
+                      )}
+                      <button
+                        key={index}
+                        onClick={() => {
+                          if (!isStrictMode || index > currentQuestionIndex) {
+                            setCurrentQuestionIndex(index);
+                          }
+                        }}
+                        disabled={isStrictMode && index < currentQuestionIndex}
+                        className={cn(
+                          "aspect-square rounded border-2 text-sm font-semibold transition-colors min-h-[44px]",
+                          index === currentQuestionIndex && "ring-2 ring-primary ring-offset-2",
+                          answers[index] && "bg-green-100 border-green-600 text-green-900 dark:bg-green-900/20 dark:text-green-100",
+                          markedForReview.has(index) && "bg-yellow-100 border-yellow-600 text-yellow-900 dark:bg-yellow-900/20 dark:text-yellow-100",
+                          !answers[index] && !markedForReview.has(index) && "border-border hover:bg-accent",
+                          isStrictMode && index < currentQuestionIndex && "opacity-50 cursor-not-allowed"
+                        )}
+                      >
+                        {index + 1}
+                      </button>
+                    </>
+                  );
+                })}
               </div>
               <div className="mt-4 space-y-2 text-xs">
                 <div className="flex items-center gap-2">
@@ -283,9 +309,24 @@ export default function ExamInterface() {
           {/* Question Area */}
           <Card className="lg:col-span-3">
             <CardContent className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+              {/* Section Break Banner for Long Exams */}
+              {isSectionStart && isLongExam && (
+                <Card className="bg-primary/5 border-primary/20 mb-4">
+                  <CardContent className="p-4 text-center">
+                    <h3 className="font-semibold text-lg">Section {currentSection}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Questions {(currentSection - 1) * sectionSize + 1} - {Math.min(currentSection * sectionSize, exam.total_questions)}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      You've completed {Math.floor(progress)}% of the exam. Keep going!
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+              
               <div>
                 <h3 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">
-                  Question {currentQuestionIndex + 1}
+                  Question {currentQuestionIndex + 1}{isLongExam && ` • Section ${currentSection}`}
                 </h3>
                 <p className="text-base sm:text-lg leading-relaxed">{currentQuestion.question}</p>
               </div>
@@ -366,28 +407,46 @@ export default function ExamInterface() {
                   <DrawerTitle>Question Navigator</DrawerTitle>
                 </DrawerHeader>
                 <div className="p-4">
+                  {isLongExam && (
+                    <div className="mb-4 p-2 bg-primary/10 rounded-md">
+                      <p className="text-xs font-medium">Section {currentSection} of {Math.ceil(exam.total_questions / sectionSize)}</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Questions {(currentSection - 1) * sectionSize + 1}-{Math.min(currentSection * sectionSize, exam.total_questions)}
+                      </p>
+                    </div>
+                  )}
                   <div className="grid grid-cols-6 sm:grid-cols-8 gap-2 mb-4">
-                    {questions.map((_: any, index: number) => (
-                      <button
-                        key={index}
-                        onClick={() => {
-                          if (!isStrictMode || index > currentQuestionIndex) {
-                            setCurrentQuestionIndex(index);
-                          }
-                        }}
-                        disabled={isStrictMode && index < currentQuestionIndex}
-                        className={cn(
-                          "aspect-square rounded border-2 text-sm font-semibold transition-colors min-h-[44px] min-w-[44px]",
-                          index === currentQuestionIndex && "ring-2 ring-primary ring-offset-2",
-                          answers[index] && "bg-green-100 border-green-600 text-green-900 dark:bg-green-900/20 dark:text-green-100",
-                          markedForReview.has(index) && "bg-yellow-100 border-yellow-600 text-yellow-900 dark:bg-yellow-900/20 dark:text-yellow-100",
-                          !answers[index] && !markedForReview.has(index) && "border-border hover:bg-accent",
-                          isStrictMode && index < currentQuestionIndex && "opacity-50 cursor-not-allowed"
-                        )}
-                      >
-                        {index + 1}
-                      </button>
-                    ))}
+                    {questions.map((_: any, index: number) => {
+                      const isNewSection = isLongExam && index % sectionSize === 0 && index > 0;
+                      return (
+                        <>
+                          {isNewSection && (
+                            <div className="col-span-6 sm:col-span-8 my-2 border-t pt-2">
+                              <p className="text-xs font-medium text-muted-foreground">Section {Math.floor(index / sectionSize) + 1}</p>
+                            </div>
+                          )}
+                          <button
+                            key={index}
+                            onClick={() => {
+                              if (!isStrictMode || index > currentQuestionIndex) {
+                                setCurrentQuestionIndex(index);
+                              }
+                            }}
+                            disabled={isStrictMode && index < currentQuestionIndex}
+                            className={cn(
+                              "aspect-square rounded border-2 text-sm font-semibold transition-colors min-h-[44px] min-w-[44px]",
+                              index === currentQuestionIndex && "ring-2 ring-primary ring-offset-2",
+                              answers[index] && "bg-green-100 border-green-600 text-green-900 dark:bg-green-900/20 dark:text-green-100",
+                              markedForReview.has(index) && "bg-yellow-100 border-yellow-600 text-yellow-900 dark:bg-yellow-900/20 dark:text-yellow-100",
+                              !answers[index] && !markedForReview.has(index) && "border-border hover:bg-accent",
+                              isStrictMode && index < currentQuestionIndex && "opacity-50 cursor-not-allowed"
+                            )}
+                          >
+                            {index + 1}
+                          </button>
+                        </>
+                      );
+                    })}
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex items-center gap-2">
