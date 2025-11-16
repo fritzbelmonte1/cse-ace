@@ -10,9 +10,17 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { ArrowLeft, Check, X, Edit2, Save, XCircle, CheckCircle, Clock, Search, Filter } from "lucide-react";
+import { ArrowLeft, Check, X, Edit2, Save, XCircle, CheckCircle, Clock, Search, Filter, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const modules = [
   { id: "vocabulary", name: "Vocabulary" },
@@ -45,6 +53,11 @@ export default function AdminQuestions() {
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Question>>({});
+  const [quickEditId, setQuickEditId] = useState<string | null>(null);
+  const [quickEditForm, setQuickEditForm] = useState<Partial<Question>>({});
+  const [showBulkPreview, setShowBulkPreview] = useState(false);
+  const [bulkAction, setBulkAction] = useState<"approve" | "reject" | null>(null);
+  const [stats, setStats] = useState({ pending: 0, approved: 0, rejected: 0, highConf: 0 });
   
   // Filters
   const [moduleFilter, setModuleFilter] = useState<string>("all");
@@ -64,6 +77,7 @@ export default function AdminQuestions() {
   useEffect(() => {
     if (user) {
       fetchQuestions();
+      fetchStats();
     }
   }, [user, moduleFilter, statusFilter, confidenceFilter, currentPage]);
 
@@ -89,6 +103,26 @@ export default function AdminQuestions() {
 
     setUser(user);
     setLoading(false);
+  };
+
+  const fetchStats = async () => {
+    try {
+      const [pendingRes, approvedRes, rejectedRes, highConfRes] = await Promise.all([
+        supabase.from("extracted_questions").select("id", { count: "exact", head: true }).eq("status", "pending"),
+        supabase.from("extracted_questions").select("id", { count: "exact", head: true }).eq("status", "approved"),
+        supabase.from("extracted_questions").select("id", { count: "exact", head: true }).eq("status", "rejected"),
+        supabase.from("extracted_questions").select("id", { count: "exact", head: true }).eq("status", "pending").gte("confidence_score", 0.95),
+      ]);
+
+      setStats({
+        pending: pendingRes.count || 0,
+        approved: approvedRes.count || 0,
+        rejected: rejectedRes.count || 0,
+        highConf: highConfRes.count || 0,
+      });
+    } catch (error) {
+      console.error("Error fetching stats:", error);
+    }
   };
 
   const fetchQuestions = async () => {
@@ -150,36 +184,109 @@ export default function AdminQuestions() {
     setSelectedQuestions(newSelected);
   };
 
+  const handleAutoApprove = async () => {
+    if (!confirm("Auto-approve all pending questions with confidence ≥ 95%?")) return;
+
+    setLoading(true);
+    try {
+      const { data: highConfQuestions, error: fetchError } = await supabase
+        .from("extracted_questions")
+        .select("id")
+        .eq("status", "pending")
+        .gte("confidence_score", 0.95);
+
+      if (fetchError) throw fetchError;
+
+      if (!highConfQuestions || highConfQuestions.length === 0) {
+        toast.info("No high-confidence questions found");
+        setLoading(false);
+        return;
+      }
+
+      const chunkSize = 50;
+      let approved = 0;
+
+      for (let i = 0; i < highConfQuestions.length; i += chunkSize) {
+        const chunk = highConfQuestions.slice(i, i + chunkSize);
+        const ids = chunk.map(q => q.id);
+
+        const { error } = await supabase
+          .from("extracted_questions")
+          .update({
+            status: "approved",
+            approved_by: user.id,
+            approved_at: new Date().toISOString()
+          })
+          .in("id", ids);
+
+        if (error) throw error;
+        approved += chunk.length;
+
+        toast.loading(`Approving... ${approved}/${highConfQuestions.length}`, { id: "auto-approve" });
+      }
+
+      toast.success(`Auto-approved ${approved} high-confidence questions`, { id: "auto-approve" });
+      fetchQuestions();
+      fetchStats();
+    } catch (error: any) {
+      console.error("Auto-approval error:", error);
+      toast.error("Auto-approval failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleBulkAction = async (action: "approve" | "reject") => {
     if (selectedQuestions.size === 0) {
       toast.error("No questions selected");
       return;
     }
 
-    const status = action === "approve" ? "approved" : "rejected";
-    
-    // Update each selected question
-    const updates = Array.from(selectedQuestions).map(id => 
-      supabase
-        .from("extracted_questions")
-        .update({
-          status,
-          approved_by: user.id,
-          approved_at: new Date().toISOString()
-        })
-        .eq("id", id)
-    );
+    setBulkAction(action);
+    setShowBulkPreview(true);
+  };
 
-    const results = await Promise.all(updates);
-    const hasError = results.some(r => r.error);
+  const confirmBulkAction = async () => {
+    if (!bulkAction) return;
 
-    if (hasError) {
-      console.error("Bulk action error");
-      toast.error(`Failed to ${action} some questions`);
-    } else {
-      toast.success(`${selectedQuestions.size} questions ${action}d`);
+    setLoading(true);
+    setShowBulkPreview(false);
+
+    try {
+      const ids = Array.from(selectedQuestions);
+      const chunkSize = 50;
+      let processed = 0;
+
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+
+        const updateData: any = { status: bulkAction === "approve" ? "approved" : "rejected" };
+        if (bulkAction === "approve") {
+          updateData.approved_by = user.id;
+          updateData.approved_at = new Date().toISOString();
+        }
+
+        const { error } = await supabase
+          .from("extracted_questions")
+          .update(updateData)
+          .in("id", chunk);
+
+        if (error) throw error;
+        processed += chunk.length;
+
+        toast.loading(`Processing... ${processed}/${ids.length}`, { id: "bulk-action" });
+      }
+
+      toast.success(`${bulkAction === "approve" ? "Approved" : "Rejected"} ${processed} questions`, { id: "bulk-action" });
       setSelectedQuestions(new Set());
       fetchQuestions();
+      fetchStats();
+    } catch (error: any) {
+      console.error("Bulk action error:", error);
+      toast.error(`Failed to ${bulkAction} questions`);
+    } finally {
+      setLoading(false);
+      setBulkAction(null);
     }
   };
 
@@ -191,6 +298,37 @@ export default function AdminQuestions() {
   const cancelEdit = () => {
     setEditingId(null);
     setEditForm({});
+  };
+
+  const startQuickEdit = (question: Question) => {
+    setQuickEditId(question.id);
+    setQuickEditForm(question);
+  };
+
+  const saveQuickEdit = async () => {
+    if (!quickEditId) return;
+
+    try {
+      const { error } = await supabase
+        .from("extracted_questions")
+        .update(quickEditForm)
+        .eq("id", quickEditId);
+
+      if (error) throw error;
+
+      toast.success("Question updated");
+      setQuickEditId(null);
+      setQuickEditForm({});
+      fetchQuestions();
+    } catch (error: any) {
+      console.error("Quick edit error:", error);
+      toast.error("Failed to update question");
+    }
+  };
+
+  const cancelQuickEdit = () => {
+    setQuickEditId(null);
+    setQuickEditForm({});
   };
 
   const saveEdit = async () => {
@@ -270,13 +408,72 @@ export default function AdminQuestions() {
           </div>
         </div>
 
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold">{stats.pending}</div>
+                  <p className="text-xs text-muted-foreground">Pending Review</p>
+                </div>
+                <Clock className="h-8 w-8 text-muted-foreground opacity-50" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold">{stats.approved}</div>
+                  <p className="text-xs text-muted-foreground">Approved</p>
+                </div>
+                <CheckCircle className="h-8 w-8 text-green-500 opacity-50" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold">{stats.rejected}</div>
+                  <p className="text-xs text-muted-foreground">Rejected</p>
+                </div>
+                <XCircle className="h-8 w-8 text-destructive opacity-50" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold">{stats.highConf}</div>
+                  <p className="text-xs text-muted-foreground">High Confidence (≥95%)</p>
+                </div>
+                <CheckCircle className="h-8 w-8 text-blue-500 opacity-50" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         {/* Filters */}
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Filter className="w-5 h-5" />
-              Filters
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Filter className="w-5 h-5" />
+                Filters
+              </CardTitle>
+              <Button
+                onClick={handleAutoApprove}
+                variant="outline"
+                className="gap-2"
+                disabled={loading || stats.highConf === 0}
+              >
+                <CheckCircle className="h-4 w-4" />
+                Auto-Approve High Confidence ({stats.highConf})
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -390,8 +587,8 @@ export default function AdminQuestions() {
 
                   <div className="flex-1">
                     {editingId === question.id ? (
-                      // Edit Mode
-                      <div className="space-y-4">
+                      // Full Edit Mode
+                      <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
                         <div>
                           <Label>Module</Label>
                           <Select value={editForm.module} onValueChange={(value) => setEditForm({...editForm, module: value})}>
@@ -480,6 +677,64 @@ export default function AdminQuestions() {
                           </Button>
                         </div>
                       </div>
+                    ) : quickEditId === question.id ? (
+                      // Quick Edit Mode
+                      <div className="space-y-3 p-4 border-2 border-primary rounded-lg bg-primary/5">
+                        <div>
+                          <Label className="text-xs">Question</Label>
+                          <Textarea
+                            value={quickEditForm.question || ""}
+                            onChange={(e) => setQuickEditForm({ ...quickEditForm, question: e.target.value })}
+                            rows={2}
+                            className="text-sm"
+                          />
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          {["A", "B", "C", "D"].map((option) => (
+                            <div key={option}>
+                              <Label className="text-xs">Option {option}</Label>
+                              <Input
+                                value={quickEditForm[`option_${option.toLowerCase()}` as keyof Question] as string || ""}
+                                onChange={(e) => setQuickEditForm({
+                                  ...quickEditForm,
+                                  [`option_${option.toLowerCase()}`]: e.target.value
+                                })}
+                                className="text-sm"
+                              />
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs">Correct:</Label>
+                            <Select
+                              value={quickEditForm.correct_answer || ""}
+                              onValueChange={(value) => setQuickEditForm({ ...quickEditForm, correct_answer: value })}
+                            >
+                              <SelectTrigger className="w-20 h-8 text-sm">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {["A", "B", "C", "D"].map((opt) => (
+                                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          
+                          <div className="flex gap-2 ml-auto">
+                            <Button onClick={saveQuickEdit} size="sm" className="gap-1 h-8">
+                              <Save className="h-3 w-3" />
+                              Save
+                            </Button>
+                            <Button onClick={cancelQuickEdit} variant="outline" size="sm" className="h-8">
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
                     ) : (
                       // View Mode
                       <div className="space-y-3">
@@ -521,8 +776,13 @@ export default function AdminQuestions() {
                           </div>
 
                           <div className="flex flex-col gap-2 ml-4">
-                            <Button onClick={() => startEdit(question)} variant="outline" size="sm">
-                              <Edit2 className="w-4 h-4" />
+                            <Button
+                              onClick={() => startQuickEdit(question)}
+                              variant="default"
+                              size="sm"
+                              className="gap-2"
+                            >
+                              <Edit2 className="h-4 w-4" />
                             </Button>
                             {question.status !== "approved" && (
                               <Button
@@ -594,6 +854,71 @@ export default function AdminQuestions() {
           </div>
         )}
       </div>
+
+      {/* Bulk Action Preview Dialog */}
+      <Dialog open={showBulkPreview} onOpenChange={setShowBulkPreview}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {bulkAction === "approve" ? (
+                <CheckCircle className="h-5 w-5 text-green-500" />
+              ) : (
+                <XCircle className="h-5 w-5 text-destructive" />
+              )}
+              Confirm Bulk {bulkAction === "approve" ? "Approval" : "Rejection"}
+            </DialogTitle>
+            <DialogDescription>
+              You are about to {bulkAction} {selectedQuestions.size} questions. Please review before confirming.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {questions
+              .filter(q => selectedQuestions.has(q.id))
+              .map((q, idx) => (
+                <Card key={q.id}>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start gap-2">
+                      <Badge variant="outline" className="mt-1">{idx + 1}</Badge>
+                      <div className="flex-1 space-y-1">
+                        <p className="text-sm font-medium leading-tight">
+                          {q.question.length > 100 ? q.question.substring(0, 100) + "..." : q.question}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary" className="text-xs">{modules.find(m => m.id === q.module)?.name}</Badge>
+                          {getConfidenceBadge(q.confidence_score)}
+                        </div>
+                      </div>
+                    </div>
+                  </CardHeader>
+                </Card>
+              ))}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBulkPreview(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmBulkAction}
+              variant={bulkAction === "approve" ? "default" : "destructive"}
+              className="gap-2"
+            >
+              {bulkAction === "approve" ? (
+                <>
+                  <CheckCircle className="h-4 w-4" />
+                  Approve {selectedQuestions.size} Questions
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-4 w-4" />
+                  Reject {selectedQuestions.size} Questions
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

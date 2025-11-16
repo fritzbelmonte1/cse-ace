@@ -10,9 +10,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { ArrowLeft, Upload, Trash2, RefreshCw, Loader2, CheckCircle2, FileUp, XCircle, Clock, AlertCircle, FileText } from "lucide-react";
+import { ArrowLeft, Upload, Trash2, RefreshCw, Loader2, CheckCircle2, FileUp, XCircle, Clock, AlertCircle, FileText, Download } from "lucide-react";
 import { ProcessingStatusBadge } from "@/components/ProcessingStatusBadge";
 import { Navigation } from "@/components/Navigation";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { QuestionImportPreview } from "@/components/QuestionImportPreview";
+import { parseCSV, detectColumns, mapRowToQuestion, type ParsedQuestion, type ColumnMapping } from "@/utils/csvParser";
 
 const AdminUpload = () => {
   const navigate = useNavigate();
@@ -30,6 +34,18 @@ const AdminUpload = () => {
   const [showOnlyNeedsReview, setShowOnlyNeedsReview] = useState(false);
   const [isReprocessing, setIsReprocessing] = useState(false);
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+  
+  // CSV Import states
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvData, setCsvData] = useState<string[][]>([]);
+  const [columnMapping, setColumnMapping] = useState<Partial<ColumnMapping>>({});
+  const [importPreview, setImportPreview] = useState<ParsedQuestion[]>([]);
+  const [duplicates, setDuplicates] = useState<Set<number>>(new Set());
+  const [skipDuplicates, setSkipDuplicates] = useState(true);
+  const [autoApprove, setAutoApprove] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [csvModule, setCsvModule] = useState("vocabulary");
 
   useEffect(() => {
     fetchDocuments();
@@ -116,6 +132,186 @@ const AdminUpload = () => {
       setIsReprocessing(false);
       setUploadStatus('');
     }
+  };
+
+  const handleCSVFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setCsvFile(file);
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const rows = parseCSV(text);
+      
+      if (rows.length < 2) {
+        toast.error("CSV file must have at least a header row and one data row");
+        return;
+      }
+      
+      const headers = rows[0];
+      const mapping = detectColumns(headers);
+      
+      setColumnMapping(mapping);
+      setCsvData(rows);
+      
+      // Auto-generate preview if mapping is complete
+      if (Object.keys(mapping).length >= 7) {
+        generatePreview(rows.slice(1), mapping as ColumnMapping);
+      } else {
+        toast.info("Please verify column mapping", {
+          description: "Some columns could not be auto-detected"
+        });
+      }
+    };
+    
+    reader.readAsText(file);
+  };
+  
+  const generatePreview = async (dataRows: string[][], mapping: ColumnMapping) => {
+    const questions: ParsedQuestion[] = [];
+    
+    for (const row of dataRows) {
+      const question = mapRowToQuestion(row, mapping, csvModule);
+      if (question) {
+        questions.push(question);
+      }
+    }
+    
+    setImportPreview(questions);
+    
+    // Detect duplicates
+    await detectDuplicates(questions);
+    
+    toast.success(`Parsed ${questions.length} valid questions`);
+  };
+  
+  const detectDuplicates = async (questions: ParsedQuestion[]) => {
+    const duplicateIndices = new Set<number>();
+    
+    try {
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        
+        const { data: existing } = await supabase
+          .from("extracted_questions")
+          .select("id")
+          .eq("module", q.module)
+          .ilike("question", `${q.question.substring(0, 50)}%`)
+          .limit(1);
+        
+        if (existing && existing.length > 0) {
+          duplicateIndices.add(i);
+        }
+      }
+      
+      setDuplicates(duplicateIndices);
+    } catch (error) {
+      console.error("Error detecting duplicates:", error);
+    }
+  };
+  
+  const handleBulkImport = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Authentication required");
+      return;
+    }
+    
+    setImporting(true);
+    setImportProgress(0);
+    
+    const questionsToImport = importPreview.filter((_, idx) => 
+      skipDuplicates ? !duplicates.has(idx) : true
+    );
+    
+    if (questionsToImport.length === 0) {
+      toast.error("No questions to import");
+      setImporting(false);
+      return;
+    }
+    
+    const batchSize = 50;
+    let imported = 0;
+    
+    try {
+      // Create a placeholder document for CSV imports
+      const { data: doc, error: docError } = await supabase
+        .from("documents")
+        .insert({
+          file_name: csvFile?.name || "csv_import.csv",
+          file_path: "csv_import",
+          purpose: "questions",
+          module: csvModule,
+          processed: true,
+          processing_status: "completed"
+        })
+        .select()
+        .single();
+      
+      if (docError) throw docError;
+      
+      for (let i = 0; i < questionsToImport.length; i += batchSize) {
+        const batch = questionsToImport.slice(i, i + batchSize);
+        
+        const { error } = await supabase
+          .from("extracted_questions")
+          .insert(batch.map(q => ({
+            question: q.question,
+            option_a: q.option_a,
+            option_b: q.option_b,
+            option_c: q.option_c,
+            option_d: q.option_d,
+            correct_answer: q.correct_answer,
+            module: q.module,
+            confidence_score: q.confidence_score,
+            status: autoApprove && q.confidence_score >= 0.95 ? "approved" : "pending",
+            document_id: doc.id,
+            approved_by: autoApprove && q.confidence_score >= 0.95 ? user.id : null,
+            approved_at: autoApprove && q.confidence_score >= 0.95 ? new Date().toISOString() : null
+          })));
+        
+        if (error) throw error;
+        
+        imported += batch.length;
+        setImportProgress((imported / questionsToImport.length) * 100);
+        
+        toast.loading(`Importing... ${imported}/${questionsToImport.length}`, { id: "import" });
+      }
+      
+      toast.success(`Imported ${imported} questions successfully`, { id: "import" });
+      
+      // Reset form
+      setCsvFile(null);
+      setCsvData([]);
+      setImportPreview([]);
+      setDuplicates(new Set());
+      setImportProgress(0);
+      
+      fetchDocuments();
+      
+    } catch (error: any) {
+      console.error("Import error:", error);
+      toast.error("Import failed: " + error.message);
+    } finally {
+      setImporting(false);
+    }
+  };
+  
+  const downloadTemplate = () => {
+    const template = `question,option_a,option_b,option_c,option_d,correct_answer,module
+"What is the synonym of 'happy'?","Sad","Joyful","Angry","Tired","B","vocabulary"
+"What is 2 + 2?","2","3","4","5","C","numerical"
+"Which word is a noun?","Run","Quickly","Dog","Beautiful","C","grammar"`;
+    
+    const blob = new Blob([template], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'question_import_template.csv';
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleReprocessAll = async () => {
@@ -912,6 +1108,132 @@ Q: Your question?{'\n'}A: Option A{'\n'}B: Option B{'\n'}C: Option C{'\n'}D: Opt
                       className="min-h-[200px] font-mono text-sm"
                     />
                   )}
+                </TabsContent>
+
+                {/* CSV Import Tab */}
+                <TabsContent value="csv" className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle>Bulk Import Questions from CSV</CardTitle>
+                          <CardDescription>
+                            Upload a CSV file with questions to import them in bulk
+                          </CardDescription>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={downloadTemplate} className="gap-2">
+                          <Download className="h-4 w-4" />
+                          Download Template
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Module Selection */}
+                      <div>
+                        <Label>Default Module</Label>
+                        <Select value={csvModule} onValueChange={setCsvModule}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="vocabulary">Vocabulary</SelectItem>
+                            <SelectItem value="grammar">Grammar</SelectItem>
+                            <SelectItem value="reading">Reading Comprehension</SelectItem>
+                            <SelectItem value="numerical">Numerical Ability</SelectItem>
+                            <SelectItem value="logical">Logical Reasoning</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* File Upload */}
+                      <div>
+                        <Label>CSV File</Label>
+                        <Input 
+                          type="file" 
+                          accept=".csv,.xlsx" 
+                          onChange={handleCSVFileSelect}
+                          disabled={importing}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Required columns: question, option_a, option_b, option_c, option_d, correct_answer, module
+                        </p>
+                      </div>
+
+                      {/* Preview */}
+                      {importPreview.length > 0 && (
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="text-base">Preview ({importPreview.length} questions)</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <QuestionImportPreview
+                              questions={importPreview}
+                              duplicates={duplicates}
+                            />
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      {/* Import Options */}
+                      {importPreview.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <Checkbox 
+                              id="skip-duplicates" 
+                              checked={skipDuplicates}
+                              onCheckedChange={(checked) => setSkipDuplicates(checked as boolean)}
+                            />
+                            <Label htmlFor="skip-duplicates" className="cursor-pointer">
+                              Skip duplicate questions ({duplicates.size} found)
+                            </Label>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            <Checkbox 
+                              id="auto-approve" 
+                              checked={autoApprove}
+                              onCheckedChange={(checked) => setAutoApprove(checked as boolean)}
+                            />
+                            <Label htmlFor="auto-approve" className="cursor-pointer">
+                              Auto-approve high confidence questions (≥95%)
+                            </Label>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Import Progress */}
+                      {importing && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Importing questions...</span>
+                            <span className="font-medium">{Math.round(importProgress)}%</span>
+                          </div>
+                          <Progress value={importProgress} className="h-2" />
+                        </div>
+                      )}
+
+                      {/* Import Button */}
+                      {importPreview.length > 0 && (
+                        <Button 
+                          onClick={handleBulkImport} 
+                          disabled={importing}
+                          className="w-full gap-2"
+                        >
+                          {importing ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Importing...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="h-4 w-4" />
+                              Import {importPreview.length - (skipDuplicates ? duplicates.size : 0)} Questions
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
                 </TabsContent>
               </Tabs>
 
