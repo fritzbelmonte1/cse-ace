@@ -10,7 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
 import { toast } from "sonner";
-import { Clock, Flag, Loader2, Menu } from "lucide-react";
+import { Clock, Flag, Loader2, Menu, Pause, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Navigation } from "@/components/Navigation";
 
@@ -25,15 +25,20 @@ export default function ExamInterface() {
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [pauseStartTime, setPauseStartTime] = useState<number | null>(null);
 
   useEffect(() => {
     loadExam();
   }, [examId]);
 
   useEffect(() => {
-    if (!exam || exam.exam_type === "practice" || !exam.time_limit_minutes) return;
+    if (!exam || exam.exam_type === "practice" || !exam.time_limit_minutes || isPaused) return;
 
-    const endTime = new Date(exam.started_at).getTime() + exam.time_limit_minutes * 60 * 1000;
+    // Calculate end time accounting for pause time
+    const totalPauseTime = (exam.total_pause_time_seconds || 0) * 1000;
+    const endTime = new Date(exam.started_at).getTime() + exam.time_limit_minutes * 60 * 1000 + totalPauseTime;
+    
     const timer = setInterval(() => {
       const now = Date.now();
       const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
@@ -45,17 +50,17 @@ export default function ExamInterface() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [exam]);
+  }, [exam, isPaused]);
 
-  // Auto-save with dynamic interval based on exam length
+  // Auto-save with dynamic interval based on exam length (only when not paused)
   useEffect(() => {
-    if (!exam) return;
+    if (!exam || isPaused) return;
     const saveInterval = exam.total_questions >= 200 ? 15000 : 30000; // 15s for long exams, 30s for shorter
     const autoSave = setInterval(() => {
       saveProgress();
     }, saveInterval);
     return () => clearInterval(autoSave);
-  }, [exam, answers]); // saveProgress is stable from useCallback
+  }, [exam, answers, isPaused]); // saveProgress is stable from useCallback
 
   // Prevent accidental navigation
   useEffect(() => {
@@ -87,6 +92,13 @@ export default function ExamInterface() {
       setExam(data);
       const loadedAnswers = data.answers as Record<number, string> || {};
       setAnswers(loadedAnswers);
+      
+      // Check if exam was previously paused
+      if (data.paused_at && data.status === "paused") {
+        setIsPaused(true);
+        setPauseStartTime(new Date(data.paused_at).getTime());
+      }
+      
       setLoading(false);
     } catch (error: any) {
       console.error("Error loading exam:", error);
@@ -120,9 +132,58 @@ export default function ExamInterface() {
   };
 
   const handlePauseExam = async () => {
-    await saveProgress();
-    toast.success("Exam paused. You can resume from the dashboard.");
-    navigate("/dashboard");
+    try {
+      await saveProgress();
+      const now = new Date().toISOString();
+      
+      await supabase
+        .from("mock_exams")
+        .update({ 
+          paused_at: now,
+          status: "paused"
+        })
+        .eq("id", examId);
+      
+      setIsPaused(true);
+      setPauseStartTime(Date.now());
+      toast.success("Exam paused. Take your time!");
+    } catch (error) {
+      console.error("Error pausing exam:", error);
+      toast.error("Failed to pause exam");
+    }
+  };
+
+  const handleResumeExam = async () => {
+    try {
+      if (!pauseStartTime) return;
+      
+      const pauseDuration = Math.floor((Date.now() - pauseStartTime) / 1000);
+      const totalPauseTime = (exam.total_pause_time_seconds || 0) + pauseDuration;
+      
+      await supabase
+        .from("mock_exams")
+        .update({ 
+          paused_at: null,
+          total_pause_time_seconds: totalPauseTime,
+          status: "in_progress"
+        })
+        .eq("id", examId);
+      
+      // Update local exam state with new pause time
+      setExam((prev: any) => ({
+        ...prev,
+        total_pause_time_seconds: totalPauseTime,
+        paused_at: null,
+        status: "in_progress"
+      }));
+      
+      setIsPaused(false);
+      setPauseStartTime(null);
+      toast.success("Exam resumed. Good luck!");
+    } catch (error) {
+      console.error("Error resuming exam:", error);
+      toast.error("Failed to resume exam");
+    }
   };
 
   const handleSubmitExam = async (autoSubmit = false) => {
@@ -211,6 +272,69 @@ export default function ExamInterface() {
     <>
       <Navigation />
       <div className="min-h-screen bg-background pb-20 sm:pb-0">
+        {/* Pause Overlay */}
+        {isPaused && (
+          <div className="fixed inset-0 bg-background/95 backdrop-blur-sm z-50 flex items-center justify-center">
+            <Card className="w-full max-w-md mx-4">
+              <CardContent className="p-8 text-center space-y-6">
+                <div className="flex justify-center">
+                  <div className="rounded-full bg-primary/10 p-6">
+                    <Pause className="w-12 h-12 text-primary" />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-bold">Exam Paused</h2>
+                  <p className="text-muted-foreground">
+                    Take a break. Your progress has been saved.
+                  </p>
+                </div>
+
+                <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Questions Answered:</span>
+                    <span className="font-semibold">{Object.keys(answers).length} / {exam.total_questions}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Progress:</span>
+                    <span className="font-semibold">{Math.round(progress)}%</span>
+                  </div>
+                  {exam.exam_type !== "practice" && timeRemaining !== null && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Time Remaining:</span>
+                      <span className="font-semibold">{formatTime(timeRemaining)}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <Button 
+                    onClick={handleResumeExam}
+                    size="lg"
+                    className="w-full"
+                  >
+                    <Play className="w-4 h-4 mr-2" />
+                    Resume Exam
+                  </Button>
+                  
+                  <Button 
+                    onClick={() => navigate("/dashboard")}
+                    variant="outline"
+                    size="lg"
+                    className="w-full"
+                  >
+                    Exit to Dashboard
+                  </Button>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  Note: Time spent while paused will not count against your exam time.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         {/* Header */}
         <div className="border-b bg-card sticky top-16 z-10">
         <div className="container mx-auto px-4 py-3">
@@ -225,9 +349,16 @@ export default function ExamInterface() {
               </span>
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
-              {exam.exam_type === "practice" && (
-                <Button variant="outline" onClick={handlePauseExam} size="sm" className="hidden sm:flex">
-                  Pause & Save
+              {/* Pause button for all exam types */}
+              {!isPaused && (
+                <Button 
+                  variant="outline" 
+                  onClick={handlePauseExam} 
+                  size="sm"
+                  className="flex items-center gap-1"
+                >
+                  <Pause className="w-4 h-4" />
+                  <span className="hidden sm:inline">Pause</span>
                 </Button>
               )}
               {exam.exam_type !== "practice" && timeRemaining !== null && (
