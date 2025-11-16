@@ -165,7 +165,8 @@ const AdminUpload = () => {
     }
 
     setAiParsing(true);
-    setUploadStatus("AI is parsing questions...");
+    setUploadStatus("AI is analyzing your text with enhanced extraction...");
+    setUploadProgress(10);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -174,6 +175,9 @@ const AdminUpload = () => {
         navigate("/auth");
         return;
       }
+
+      setUploadProgress(20);
+      setUploadStatus("Processing with advanced AI model (gemini-2.5-pro)...");
 
       const { data, error } = await supabase.functions.invoke('parse-questions-ai', {
         body: { text: pastedText, module }
@@ -196,10 +200,26 @@ const AdminUpload = () => {
         return;
       }
 
-      console.log(`AI extracted ${data.questions.length} questions`);
+      setUploadProgress(60);
+
+      const metadata = data.metadata || {};
+      console.log(`AI Extraction Stats:`, {
+        total: data.questions.length,
+        complete: metadata.completeQuestions,
+        incomplete: metadata.incompleteQuestions,
+        processingTime: metadata.processingTimeSeconds,
+        chunksProcessed: metadata.chunksProcessed
+      });
+
+      // Show extraction progress
+      if (metadata.chunksProcessed > 1) {
+        setUploadStatus(`Processed ${metadata.chunksProcessed} document chunks. Deduplicating...`);
+      }
+
+      setUploadProgress(70);
+      setUploadStatus("Validating and saving questions...");
 
       // Create document record
-      setUploadStatus("Saving parsed questions...");
       const { data: docData, error: docError } = await supabase
         .from('documents')
         .insert({
@@ -216,11 +236,17 @@ const AdminUpload = () => {
 
       if (docError || !docData) throw docError || new Error('Failed to create document record');
 
-      // Prepare questions for insertion
+      setUploadProgress(80);
+
+      // Prepare questions for insertion using validation data
       const questionsToInsert = data.questions.map((q: any) => {
-        const hasAllFields = !!(q.question && q.option_a && q.option_b && q.option_c && q.option_d);
-        const validAnswer = !!q.correct_answer && /^[ABCD]$/i.test(q.correct_answer);
-        const status = (hasAllFields && validAnswer) ? 'approved' : 'pending';
+        // Use validation data from edge function if available
+        const validation = q.validation || {};
+        const isComplete = validation.isComplete !== undefined 
+          ? validation.isComplete 
+          : !!(q.question && q.option_a && q.option_b && q.option_c && q.option_d && q.correct_answer && /^[ABCD]$/i.test(q.correct_answer));
+        
+        const status = isComplete ? 'approved' : 'pending';
         
         return {
           question: q.question || '[Missing question]',
@@ -228,7 +254,7 @@ const AdminUpload = () => {
           option_b: q.option_b || '',
           option_c: q.option_c || '',
           option_d: q.option_d || '',
-          correct_answer: validAnswer ? q.correct_answer.toUpperCase() : '',
+          correct_answer: q.correct_answer ? q.correct_answer.toUpperCase() : '',
           module,
           document_id: docData.id,
           status,
@@ -242,19 +268,32 @@ const AdminUpload = () => {
 
       if (insertError) throw insertError;
 
+      setUploadProgress(100);
+
       const approvedCount = questionsToInsert.filter(q => q.status === 'approved').length;
       const pendingCount = questionsToInsert.filter(q => q.status === 'pending').length;
 
-      console.log(`handleAiParse complete: ${data.questions.length} questions extracted, ${approvedCount} approved, ${pendingCount} pending`);
+      console.log(`Enhanced AI Extraction Complete:`, {
+        extracted: data.questions.length,
+        approved: approvedCount,
+        pending: pendingCount,
+        processingTime: metadata.processingTimeSeconds,
+        chunks: metadata.chunksProcessed
+      });
 
-      toast.success(`AI extracted ${data.questions.length} questions for ${module}!`, {
-        description: pendingCount > 0 
-          ? `${approvedCount} auto-approved and ready for practice, ${pendingCount} need review` 
-          : 'All auto-approved and ready for practice!'
+      // Enhanced success message with statistics
+      toast.success(`✨ Enhanced AI Extraction Complete!`, {
+        description: `${data.questions.length} questions extracted in ${metadata.processingTimeSeconds || 0}s
+        
+✅ ${approvedCount} auto-approved (ready for practice)
+${pendingCount > 0 ? `⏳ ${pendingCount} need review (missing data)` : ''}
+${metadata.chunksProcessed > 1 ? `📄 Processed ${metadata.chunksProcessed} document chunks` : ''}`,
+        duration: 6000,
       });
 
       setPastedText("");
       setUploadStatus("");
+      setUploadProgress(0);
 
     } catch (error: any) {
       console.error('Error in AI parsing:', error);
@@ -295,7 +334,7 @@ const AdminUpload = () => {
 
       // Handle question paste - try AI parsing for better results
       if (purpose === "questions" && inputMethod === "paste") {
-        setUploadStatus("AI is parsing questions...");
+        setUploadStatus("Enhanced AI is analyzing your text...");
         setUploadProgress(20);
 
         // Use AI to parse questions
@@ -381,8 +420,19 @@ const AdminUpload = () => {
           return;
         }
 
-        // AI parsing succeeded
-        console.log(`AI extracted ${aiData.questions.length} questions`);
+        // AI parsing succeeded - get metadata
+        const metadata = aiData.metadata || {};
+        console.log(`Enhanced AI Extraction Stats:`, {
+          total: aiData.questions.length,
+          complete: metadata.completeQuestions,
+          incomplete: metadata.incompleteQuestions,
+          processingTime: metadata.processingTimeSeconds,
+          chunksProcessed: metadata.chunksProcessed
+        });
+
+        if (metadata.chunksProcessed > 1) {
+          setUploadStatus(`Processed ${metadata.chunksProcessed} chunks. Saving...`);
+        }
 
         // Create a document record representing this pasted batch
         setUploadStatus("Creating document record for pasted questions...");
@@ -409,17 +459,19 @@ const AdminUpload = () => {
 
         const questionsToInsert = aiData.questions.map((q: any) => {
           const normalize = (v?: string) => (typeof v === 'string' ? v : '');
-          const validAnswer = !!q.correct_answer && /^[ABCD]$/i.test(q.correct_answer);
-          const hasAllFields = !!(q.question && q.option_a && q.option_b && q.option_c && q.option_d);
-          // Auto-approve complete questions uploaded by admin, mark incomplete as pending
-          const status = (hasAllFields && validAnswer) ? 'approved' : 'pending';
+          // Use validation data from edge function if available
+          const validation = q.validation || {};
+          const isComplete = validation.isComplete !== undefined 
+            ? validation.isComplete 
+            : !!(q.question && q.option_a && q.option_b && q.option_c && q.option_d && q.correct_answer && /^[ABCD]$/i.test(q.correct_answer));
+          const status = isComplete ? 'approved' : 'pending';
           return {
             question: normalize(q.question) || '[Missing question]',
             option_a: normalize(q.option_a),
             option_b: normalize(q.option_b),
             option_c: normalize(q.option_c),
             option_d: normalize(q.option_d),
-            correct_answer: validAnswer ? q.correct_answer.toUpperCase() : '',
+            correct_answer: q.correct_answer ? q.correct_answer.toUpperCase() : '',
             module,
             document_id: docData.id,
             status,
@@ -437,15 +489,26 @@ const AdminUpload = () => {
         const approvedCount = questionsToInsert.filter(q => q.status === 'approved').length;
         const pendingCount = questionsToInsert.filter(q => q.status === 'pending').length;
         
-        console.log(`AI parsing complete: ${aiData.questions.length} questions extracted, ${approvedCount} approved, ${pendingCount} pending`);
+        console.log(`Enhanced AI parsing complete:`, {
+          extracted: aiData.questions.length,
+          approved: approvedCount,
+          pending: pendingCount,
+          processingTime: metadata.processingTimeSeconds,
+          chunks: metadata.chunksProcessed
+        });
         
-        toast.success(`AI extracted ${aiData.questions.length} questions for ${module}!`, {
-          description: pendingCount > 0 
-            ? `${approvedCount} auto-approved and ready for practice, ${pendingCount} need review` 
-            : 'All auto-approved and ready for practice!'
+        toast.success(`✨ Enhanced AI Extraction Complete!`, {
+          description: `${aiData.questions.length} questions in ${metadata.processingTimeSeconds || 0}s
+          
+✅ ${approvedCount} auto-approved (ready for practice)
+${pendingCount > 0 ? `⏳ ${pendingCount} need review` : ''}
+${metadata.chunksProcessed > 1 ? `📄 ${metadata.chunksProcessed} chunks processed` : ''}`,
+          duration: 6000,
         });
         setPastedText("");
         setUploading(false);
+        setUploadProgress(0);
+        setUploadStatus("");
         return;
       }
 
