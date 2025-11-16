@@ -447,6 +447,7 @@ export type Database = {
           exam_type: string
           id: string
           module: string
+          paused_at: string | null
           question_performance: Json | null
           questions_data: Json
           score: number | null
@@ -454,6 +455,7 @@ export type Database = {
           status: string
           time_limit_minutes: number | null
           time_spent_seconds: number | null
+          total_pause_time_seconds: number | null
           total_questions: number
           updated_at: string
           user_id: string
@@ -466,6 +468,7 @@ export type Database = {
           exam_type: string
           id?: string
           module: string
+          paused_at?: string | null
           question_performance?: Json | null
           questions_data?: Json
           score?: number | null
@@ -473,6 +476,7 @@ export type Database = {
           status?: string
           time_limit_minutes?: number | null
           time_spent_seconds?: number | null
+          total_pause_time_seconds?: number | null
           total_questions: number
           updated_at?: string
           user_id: string
@@ -485,6 +489,7 @@ export type Database = {
           exam_type?: string
           id?: string
           module?: string
+          paused_at?: string | null
           question_performance?: Json | null
           questions_data?: Json
           score?: number | null
@@ -492,6 +497,7 @@ export type Database = {
           status?: string
           time_limit_minutes?: number | null
           time_spent_seconds?: number | null
+          total_pause_time_seconds?: number | null
           total_questions?: number
           updated_at?: string
           user_id?: string

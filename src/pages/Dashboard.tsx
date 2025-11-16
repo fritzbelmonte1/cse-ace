@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, Brain, TrendingUp, PlayCircle, MessageSquare, Layers, Users, Target as TargetIcon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { BookOpen, Brain, TrendingUp, PlayCircle, MessageSquare, Layers, Users, Target as TargetIcon, Pause } from "lucide-react";
 import { toast } from "sonner";
 import { Navigation } from "@/components/Navigation";
 
@@ -42,12 +43,12 @@ const Dashboard = () => {
       
       setIsAdmin(!!roleData);
       
-      // Fetch in-progress exams
+      // Fetch in-progress and paused exams
       const { data: examsData } = await supabase
         .from("mock_exams")
         .select("*")
         .eq("user_id", user.id)
-        .eq("status", "in_progress")
+        .in("status", ["in_progress", "paused"])
         .order("started_at", { ascending: false });
 
       setInProgressExams(examsData || []);
@@ -91,19 +92,27 @@ const Dashboard = () => {
                 <PlayCircle className="h-5 w-5 text-primary" />
                 Resume Your Exam
               </CardTitle>
-              <CardDescription>You have {inProgressExams.length} exam(s) in progress</CardDescription>
+              <CardDescription>You have {inProgressExams.length} exam(s) to continue</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {inProgressExams.map((exam) => (
                 <div key={exam.id} className="flex items-center justify-between p-3 bg-background rounded-lg border">
-                  <div>
-                    <p className="font-medium">{exam.module} - {exam.exam_type === "practice" ? "Practice" : exam.exam_type === "strict" ? "Strict" : "Standard"} Mode</p>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="font-medium">{exam.module} - {exam.exam_type === "practice" ? "Practice" : exam.exam_type === "strict" ? "Strict" : "Standard"} Mode</p>
+                      {exam.status === "paused" && (
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          <Pause className="h-3 w-3" />
+                          Paused
+                        </Badge>
+                      )}
+                    </div>
                     <p className="text-sm text-muted-foreground">
                       {Object.keys(exam.answers as object).length} of {exam.total_questions} questions answered
                     </p>
                   </div>
                   <Button onClick={() => navigate(`/exam/${exam.id}`)}>
-                    Resume
+                    {exam.status === "paused" ? "Resume" : "Continue"}
                   </Button>
                 </div>
               ))}
