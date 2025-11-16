@@ -20,6 +20,7 @@ import Goals from "./pages/Goals";
 import ExamSetup from "./pages/ExamSetup";
 import ExamInterface from "./pages/ExamInterface";
 import ExamResults from "./pages/ExamResults";
+import ExamAnalytics from "./pages/ExamAnalytics";
 import Flashcards from "./pages/Flashcards";
 import BrowseDecks from "./pages/BrowseDecks";
 import VoiceHistory from "./pages/VoiceHistory";
@@ -46,6 +47,7 @@ const App = () => (
           <Route path="/ai-assistant" element={<ProtectedRoute><AIAssistant /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+          <Route path="/exam-analytics" element={<ProtectedRoute><ExamAnalytics /></ProtectedRoute>} />
           <Route path="/goals" element={<ProtectedRoute><Goals /></ProtectedRoute>} />
           <Route
             path="/admin/upload"

@@ -448,6 +448,7 @@ export type Database = {
           id: string
           module: string
           paused_at: string | null
+          question_notes: Json | null
           question_performance: Json | null
           questions_data: Json
           score: number | null
@@ -469,6 +470,7 @@ export type Database = {
           id?: string
           module: string
           paused_at?: string | null
+          question_notes?: Json | null
           question_performance?: Json | null
           questions_data?: Json
           score?: number | null
@@ -490,6 +492,7 @@ export type Database = {
           id?: string
           module?: string
           paused_at?: string | null
+          question_notes?: Json | null
           question_performance?: Json | null
           questions_data?: Json
           score?: number | null
