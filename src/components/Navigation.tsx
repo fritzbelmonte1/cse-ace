@@ -5,13 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   BookOpen,
   Menu,
   Home,
@@ -165,50 +158,59 @@ export function Navigation() {
             <span className="font-semibold text-base hidden sm:inline">CSE Practice</span>
           </div>
 
-          {/* Desktop Navigation */}
-          <div className="hidden lg:flex items-center gap-0.5 flex-1 justify-center">
-            <NavItems />
-          </div>
-
-          {/* User Menu & Mobile Toggle */}
-          <div className="flex items-center gap-1 flex-shrink-0">
-            {/* User Dropdown - Desktop & Mobile */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="gap-1.5 h-9">
+          {/* Hamburger Menu - Always Visible */}
+          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-9 w-9">
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-72 bg-background">
+              <div className="flex flex-col gap-4 mt-8">
+                {/* User Info Section */}
+                <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-md">
                   <User className="h-4 w-4" />
-                  <span className="hidden md:inline max-w-[120px] truncate text-sm">
-                    {userEmail}
-                  </span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 bg-popover">
-                <DropdownMenuItem onClick={() => navigate("/profile")}>
-                  <User className="mr-2 h-4 w-4" />
-                  Profile
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Logout
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {/* Mobile Menu */}
-            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-              <SheetTrigger asChild className="lg:hidden">
-                <Button variant="ghost" size="icon" className="h-9 w-9">
-                  <Menu className="h-5 w-5" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="right" className="w-72 bg-background">
-                <div className="flex flex-col gap-2 mt-8">
+                  <span className="text-sm truncate">{userEmail}</span>
+                </div>
+                
+                <div className="border-t" />
+                
+                {/* Navigation Items */}
+                <div className="flex flex-col gap-2">
                   <NavItems mobile />
                 </div>
-              </SheetContent>
-            </Sheet>
-          </div>
+                
+                <div className="border-t" />
+                
+                {/* User Actions */}
+                <div className="flex flex-col gap-2">
+                  <Button
+                    variant="ghost"
+                    className="justify-start"
+                    onClick={() => {
+                      navigate("/profile");
+                      setMobileOpen(false);
+                    }}
+                  >
+                    <User className="mr-2 h-4 w-4" />
+                    Profile
+                  </Button>
+                  
+                  <Button
+                    variant="ghost"
+                    className="justify-start text-destructive hover:text-destructive"
+                    onClick={() => {
+                      handleLogout();
+                      setMobileOpen(false);
+                    }}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Logout
+                  </Button>
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
         </div>
       </div>
     </nav>
