@@ -2,6 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { Resend } from "https://esm.sh/resend@4.0.0";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
@@ -10,16 +11,18 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-interface NotificationRequest {
-  type: "goal_completed" | "exam_reminder";
-  goalData: {
-    module: string;
-    targetScore: number;
-    currentScore?: number;
-    examDate?: string;
-    daysUntilExam?: number;
-  };
-}
+const notificationSchema = z.object({
+  type: z.enum(["goal_completed", "exam_reminder"]),
+  goalData: z.object({
+    module: z.string().min(1).max(100),
+    targetScore: z.number().min(0).max(100),
+    currentScore: z.number().min(0).max(100).optional(),
+    examDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    daysUntilExam: z.number().int().min(0).max(365).optional(),
+  }),
+});
+
+type NotificationRequest = z.infer<typeof notificationSchema>;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -43,7 +46,22 @@ serve(async (req) => {
       throw new Error("Unauthorized");
     }
 
-    const { type, goalData }: NotificationRequest = await req.json();
+    // Validate input
+    const body = await req.json();
+    const validationResult = notificationSchema.safeParse(body);
+    
+    if (!validationResult.success) {
+      console.error("Validation error:", validationResult.error);
+      return new Response(
+        JSON.stringify({ error: "Invalid input", details: validationResult.error.errors }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        }
+      );
+    }
+
+    const { type, goalData } = validationResult.data;
 
     let subject = "";
     let html = "";
