@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -54,12 +55,49 @@ serve(async (req) => {
     const purpose = formData.get('purpose') as string;
     const module = formData.get('module') as string;
 
+    // Validate inputs
     if (!file) {
       throw new Error('No file provided');
     }
 
+    // Validate file
+    const maxFileSize = 50 * 1024 * 1024; // 50MB
+    const allowedTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+      'text/plain',
+    ];
+
+    if (file.size > maxFileSize) {
+      throw new Error('File size exceeds 50MB limit');
+    }
+
+    if (!allowedTypes.includes(file.type)) {
+      throw new Error('Invalid file type. Only PDF, DOC, DOCX, and TXT files are allowed');
+    }
+
+    // Validate purpose and module
+    const purposeSchema = z.enum(['questions', 'rag']);
+    const moduleSchema = z.string().min(1).max(100).optional();
+
+    const purposeResult = purposeSchema.safeParse(purpose);
+    if (!purposeResult.success) {
+      throw new Error('Invalid purpose. Must be "questions" or "rag"');
+    }
+
+    if (module) {
+      const moduleResult = moduleSchema.safeParse(module);
+      if (!moduleResult.success) {
+        throw new Error('Invalid module name');
+      }
+    }
+
+    // Sanitize filename to prevent path traversal
+    const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+
     // Upload to storage
-    const fileName = `public/${Date.now()}-${file.name}`;
+    const fileName = `public/${Date.now()}-${sanitizedFileName}`;
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('cse-documents')
       .upload(fileName, file, {
@@ -77,9 +115,9 @@ serve(async (req) => {
       .from('documents')
       .insert({
         uploaded_by: user.id,
-        file_name: file.name,
+        file_name: sanitizedFileName,
         file_path: fileName,
-        purpose: purpose,
+        purpose: purposeResult.data,
         module: module || null,
         processed: false
       })

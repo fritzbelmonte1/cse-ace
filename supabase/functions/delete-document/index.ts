@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -51,12 +52,26 @@ serve(async (req) => {
 
     console.log(`Admin ${user.id} verified for document deletion`);
 
-    // Get document ID from request
-    const { documentId } = await req.json();
-    
-    if (!documentId) {
-      throw new Error('Document ID is required');
+    // Validate input
+    const documentIdSchema = z.object({
+      documentId: z.string().uuid(),
+    });
+
+    const body = await req.json();
+    const validationResult = documentIdSchema.safeParse(body);
+
+    if (!validationResult.success) {
+      console.error('Validation error:', validationResult.error);
+      return new Response(
+        JSON.stringify({ error: 'Invalid document ID format. Must be a valid UUID.' }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      );
     }
+
+    const { documentId } = validationResult.data;
 
     console.log(`Admin ${user.id} deleting document ${documentId}`);
 
