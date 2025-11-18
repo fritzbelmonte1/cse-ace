@@ -1,4 +1,3 @@
-import katex from 'katex';
 import { useMemo } from 'react';
 
 interface MathTextProps {
@@ -6,8 +5,22 @@ interface MathTextProps {
   className?: string;
 }
 
+// Extend Window interface to include katex from CDN
+declare global {
+  interface Window {
+    katex?: {
+      renderToString: (latex: string, options?: any) => string;
+    };
+  }
+}
+
 export const MathText = ({ text, className = '' }: MathTextProps) => {
   const renderedContent = useMemo(() => {
+    // Check if KaTeX is loaded from CDN
+    if (!window.katex) {
+      return <span className={className}>{text}</span>;
+    }
+
     // Regex to match both inline ($...$) and display ($$...$$) math
     const mathRegex = /(\$\$[\s\S]+?\$\$|\$[^\$]+?\$)/g;
     const parts = text.split(mathRegex);
@@ -18,7 +31,7 @@ export const MathText = ({ text, className = '' }: MathTextProps) => {
         // Display math (centered, block-level)
         const latex = part.slice(2, -2);
         try {
-          const html = katex.renderToString(latex, {
+          const html = window.katex!.renderToString(latex, {
             displayMode: true,
             throwOnError: false,
           });
@@ -37,7 +50,7 @@ export const MathText = ({ text, className = '' }: MathTextProps) => {
         // Inline math
         const latex = part.slice(1, -1);
         try {
-          const html = katex.renderToString(latex, {
+          const html = window.katex!.renderToString(latex, {
             displayMode: false,
             throwOnError: false,
           });
