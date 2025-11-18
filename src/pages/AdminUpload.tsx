@@ -484,6 +484,16 @@ const AdminUpload = () => {
 
       if (error) {
         console.error('AI parsing error:', error);
+        // Update document to failed status
+        await supabase
+          .from('documents')
+          .update({
+            processed: true,
+            processing_status: 'failed',
+            error_message: error.message || 'AI parsing failed'
+          })
+          .eq('id', aiDocData.id);
+        
         if (error.message.includes('Rate limit')) {
           toast.error("AI rate limit reached. Please try again in a moment.");
         } else if (error.message.includes('credits')) {
@@ -495,6 +505,16 @@ const AdminUpload = () => {
       }
 
       if (!data?.questions || data.questions.length === 0) {
+        // Update document to failed status
+        await supabase
+          .from('documents')
+          .update({
+            processed: true,
+            processing_status: 'failed',
+            error_message: 'No questions found by AI'
+          })
+          .eq('id', aiDocData.id);
+        
         toast.error("No questions found by AI. Please check the text format.");
         return;
       }
@@ -620,6 +640,34 @@ ${metadata.chunksProcessed > 1 ? `📄 Processed ${metadata.chunksProcessed} chu
 
     } catch (error: any) {
       console.error('Error in AI parsing:', error);
+      
+      // Try to update document to failed status
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: docs } = await supabase
+            .from('documents')
+            .select('id')
+            .eq('uploaded_by', user.id)
+            .eq('processing_status', 'processing')
+            .order('created_at', { ascending: false })
+            .limit(1);
+          
+          if (docs && docs.length > 0) {
+            await supabase
+              .from('documents')
+              .update({
+                processed: true,
+                processing_status: 'failed',
+                error_message: error.message || 'Processing failed'
+              })
+              .eq('id', docs[0].id);
+          }
+        }
+      } catch (updateError) {
+        console.error('Failed to update document status:', updateError);
+      }
+      
       toast.error("Failed to parse with AI: " + error.message);
     } finally {
       setAiParsing(false);
@@ -971,6 +1019,34 @@ ${metadata.chunksProcessed > 1 ? `📄 ${metadata.chunksProcessed} chunks` : ''}
 
     } catch (error: any) {
       console.error('Upload error:', error);
+      
+      // Try to update any stuck document to failed status
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: docs } = await supabase
+            .from('documents')
+            .select('id')
+            .eq('uploaded_by', user.id)
+            .eq('processing_status', 'processing')
+            .order('created_at', { ascending: false })
+            .limit(1);
+          
+          if (docs && docs.length > 0) {
+            await supabase
+              .from('documents')
+              .update({
+                processed: true,
+                processing_status: 'failed',
+                error_message: error.message || 'Upload failed'
+              })
+              .eq('id', docs[0].id);
+          }
+        }
+      } catch (updateError) {
+        console.error('Failed to update document status:', updateError);
+      }
+      
       toast.error(error.message || "Failed to upload document");
       setUploadProgress(0);
       setUploadStatus("");
