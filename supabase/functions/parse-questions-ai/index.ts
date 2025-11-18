@@ -48,7 +48,7 @@ QUANTITATIVE REASONING FOCUS:
   return guidelines[module] || guidelines.numerical;
 }
 
-// Enhanced system prompt with few-shot examples
+// Enhanced system prompt with few-shot examples and error avoidance
 function buildSystemPrompt(module: string): string {
   return `You are an expert question extractor specialized in ${module} assessment questions.
 
@@ -73,6 +73,8 @@ QUESTION FORMAT REQUIREMENTS:
 ${getModuleSpecificGuidelines(module)}
 
 EXAMPLES OF VALID QUESTIONS:
+
+✅ GOOD EXAMPLE 1 (Numerical):
 Question: "What is 25% of 80?"
 A: 15
 B: 20
@@ -80,12 +82,44 @@ C: 25
 D: 30
 Correct: B
 
+✅ GOOD EXAMPLE 2 (Vocabulary):
 Question: "Which word is a synonym for 'happy'?"
 A: Sad
 B: Joyful
 C: Angry
 D: Tired
 Correct: B
+
+✅ GOOD EXAMPLE 3 (Complex formatting):
+Source text: "15) Calculate: 5 + 3 × 2
+(i) 11  (ii) 16  (iii) 13  (iv) 10  Answer: i"
+Extracted as:
+Question: "Calculate: 5 + 3 × 2"
+A: 11
+B: 16
+C: 13
+D: 10
+Correct: A
+
+COMMON ERRORS TO AVOID:
+
+❌ ERROR 1: Duplicate or very similar options
+BAD: A: "Happy" B: "Joyful" C: "Happy" D: "Glad"
+GOOD: A: "Happy" B: "Sad" C: "Angry" D: "Excited"
+
+❌ ERROR 2: Incomplete question text
+BAD: "What is the"
+GOOD: "What is the capital of France?"
+
+❌ ERROR 3: Options that aren't answers
+BAD: A: "Maybe" B: "I don't know" C: "Paris" D: "None"
+GOOD: A: "Paris" B: "London" C: "Berlin" D: "Madrid"
+
+❌ ERROR 4: Guessing the answer
+If answer key says "Answer: X" but no X option exists, leave correct_answer empty
+
+❌ ERROR 5: Combining multiple questions
+If you see "15a)" and "15b)" - extract as TWO separate questions
 
 BE THOROUGH: Your goal is 100% extraction accuracy. Extract every question, even if some details are unclear.`;
 }
@@ -212,6 +246,81 @@ function validateQuestion(q: any): any {
       hasAnswer,
       optionsDistinct,
       isComplete: hasQuestion && hasAllOptions && hasAnswer && optionsDistinct
+    }
+  };
+}
+
+// Multi-dimensional quality scoring
+function calculateQuestionQuality(q: any): any {
+  const questionText = q.question?.trim() || '';
+  const optionA = q.option_a?.trim() || '';
+  const optionB = q.option_b?.trim() || '';
+  const optionC = q.option_c?.trim() || '';
+  const optionD = q.option_d?.trim() || '';
+  const answer = q.correct_answer?.toUpperCase() || '';
+  
+  // 1. Question Clarity (0-1)
+  const hasQuestion = questionText.length > 10;
+  const questionEndsProper = /[?.]$/.test(questionText);
+  const questionClarity = hasQuestion ? (questionEndsProper ? 1.0 : 0.8) : 0.0;
+  
+  // 2. Option Quality (0-1)
+  const allOptionsPresent = optionA && optionB && optionC && optionD;
+  const optionsArray = [optionA, optionB, optionC, optionD].filter(o => o.length > 0);
+  const optionsDistinct = new Set(optionsArray.map(o => o.toLowerCase())).size === optionsArray.length;
+  const optionsMinLength = optionsArray.every(o => o.length >= 1);
+  const optionsNotTooLong = optionsArray.every(o => o.length <= 200);
+  
+  let optionQuality = 0;
+  if (allOptionsPresent) optionQuality += 0.4;
+  if (optionsDistinct) optionQuality += 0.3;
+  if (optionsMinLength) optionQuality += 0.15;
+  if (optionsNotTooLong) optionQuality += 0.15;
+  
+  // 3. Answer Certainty (0-1)
+  const answerIsValid = ['A', 'B', 'C', 'D'].includes(answer);
+  const answerCertainty = answerIsValid ? 1.0 : 0.0;
+  
+  // 4. Formatting Score (0-1)
+  const noExtraSpaces = !/\s{3,}/.test(questionText);
+  const properCapitalization = /^[A-Z]/.test(questionText);
+  const formattingScore = (noExtraSpaces ? 0.5 : 0.3) + (properCapitalization ? 0.5 : 0.3);
+  
+  // 5. Overall Quality (weighted average)
+  const overallQuality = (
+    questionClarity * 0.35 +
+    optionQuality * 0.30 +
+    answerCertainty * 0.25 +
+    formattingScore * 0.10
+  );
+  
+  // Determine review reasons
+  const reviewReasons: string[] = [];
+  if (questionClarity < 0.7) reviewReasons.push('Question unclear or incomplete');
+  if (optionQuality < 0.7) reviewReasons.push('Options missing, duplicate, or invalid');
+  if (answerCertainty < 1.0) reviewReasons.push('Correct answer missing or invalid');
+  if (formattingScore < 0.5) reviewReasons.push('Poor formatting');
+  
+  const needsReview = overallQuality < 0.75 || answerCertainty < 0.9;
+  
+  return {
+    ...q,
+    quality: {
+      questionClarity: Math.round(questionClarity * 100) / 100,
+      optionQuality: Math.round(optionQuality * 100) / 100,
+      answerCertainty: Math.round(answerCertainty * 100) / 100,
+      formattingScore: Math.round(formattingScore * 100) / 100,
+      overallQuality: Math.round(overallQuality * 100) / 100,
+      needsReview,
+      reviewReasons
+    },
+    // Legacy validation for backward compatibility
+    validation: {
+      hasQuestion,
+      hasAllOptions: allOptionsPresent,
+      hasAnswer: answerIsValid,
+      optionsDistinct,
+      isComplete: hasQuestion && allOptionsPresent && answerIsValid && optionsDistinct
     }
   };
 }
@@ -381,28 +490,37 @@ serve(async (req) => {
       allQuestions = await extractWithRetry(normalizedText, module, LOVABLE_API_KEY);
     }
 
-    // Validate all extracted questions
-    const validatedQuestions = allQuestions.map(validateQuestion);
+    // Validate all extracted questions with quality scoring
+    const validatedQuestions = allQuestions.map(calculateQuestionQuality);
     
-    const completeCount = validatedQuestions.filter(q => q.validation.isComplete).length;
+    const completeCount = validatedQuestions.filter((q: any) => q.validation.isComplete).length;
     const incompleteCount = validatedQuestions.length - completeCount;
+    const highQualityCount = validatedQuestions.filter((q: any) => q.quality.overallQuality >= 0.85).length;
     
-    // Calculate quality score (0-100)
+    // Enhanced quality score calculation (0-100)
+    const avgQuality = validatedQuestions.length > 0 
+      ? validatedQuestions.reduce((sum: number, q: any) => sum + q.quality.overallQuality, 0) / validatedQuestions.length 
+      : 0;
+    
     const completionRate = validatedQuestions.length > 0 ? (completeCount / validatedQuestions.length) : 0;
-    const hasMinimumQuestions = validatedQuestions.length >= 5; // At least 5 questions expected
-    const lowIncompleteRate = incompleteCount / Math.max(validatedQuestions.length, 1) < 0.3; // Less than 30% incomplete
+    const hasMinimumQuestions = validatedQuestions.length >= 5;
+    const highQualityRate = validatedQuestions.length > 0 ? (highQualityCount / validatedQuestions.length) : 0;
+    const lowIncompleteRate = incompleteCount / Math.max(validatedQuestions.length, 1) < 0.3;
     
     // Quality score formula:
-    // - 60% based on completion rate
-    // - 20% based on minimum question threshold
-    // - 20% based on low incomplete rate
-    let qualityScore = (completionRate * 60) + 
-                       (hasMinimumQuestions ? 20 : (validatedQuestions.length / 5) * 20) +
-                       (lowIncompleteRate ? 20 : 0);
+    // - 50% based on average question quality
+    // - 30% based on completion rate
+    // - 10% based on minimum question threshold
+    // - 10% based on high-quality question rate
+    let qualityScore = (avgQuality * 50) + 
+                       (completionRate * 30) +
+                       (hasMinimumQuestions ? 10 : (validatedQuestions.length / 5) * 10) +
+                       (highQualityRate * 10);
     qualityScore = Math.round(Math.min(100, Math.max(0, qualityScore)));
     
-    // Determine if needs review
-    const needsReview = qualityScore < 70 || // Low quality score
+    // Determine if needs review (more sophisticated)
+    const needsReview = qualityScore < 70 || // Low overall quality
+                        avgQuality < 0.70 || // Low average quality
                         (incompleteCount / Math.max(validatedQuestions.length, 1)) > 0.3 || // >30% incomplete
                         validatedQuestions.length < 3 || // Very few questions
                         completeCount === 0; // No complete questions
@@ -427,7 +545,9 @@ serve(async (req) => {
             completionRate: Math.round(completionRate * 100),
             hasMinimumQuestions,
             lowIncompleteRate,
-            validationIssues: validatedQuestions.filter(q => !q.validation.isComplete).map(q => ({
+            highQualityRate: Math.round(highQualityRate * 100),
+            averageQuality: Math.round(avgQuality * 100),
+            validationIssues: validatedQuestions.filter((q: any) => !q.validation.isComplete).map((q: any) => ({
               question: q.question?.substring(0, 50) + '...',
               issues: {
                 missingQuestion: !q.validation.hasQuestion,

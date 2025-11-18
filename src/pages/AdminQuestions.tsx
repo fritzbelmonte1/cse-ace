@@ -22,6 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { QuestionVersionHistory } from "@/components/QuestionVersionHistory";
+import { BatchReviewInterface } from "@/components/BatchReviewInterface";
 
 const modules = [
   { id: "vocabulary", name: "Vocabulary" },
@@ -60,6 +61,7 @@ export default function AdminQuestions() {
   const [bulkAction, setBulkAction] = useState<"approve" | "reject" | null>(null);
   const [stats, setStats] = useState({ pending: 0, approved: 0, rejected: 0, highConf: 0 });
   const [versionHistoryQuestionId, setVersionHistoryQuestionId] = useState<string | null>(null);
+  const [useBatchView, setUseBatchView] = useState(true); // New batch review interface enabled by default
   
   // Filters
   const [moduleFilter, setModuleFilter] = useState<string>("all");
@@ -470,15 +472,26 @@ export default function AdminQuestions() {
                 <Filter className="w-5 h-5" />
                 Filters
               </CardTitle>
-              <Button
-                onClick={handleAutoApprove}
-                variant="outline"
-                className="gap-2"
-                disabled={loading || stats.highConf === 0}
-              >
-                <CheckCircle className="h-4 w-4" />
-                Auto-Approve High Confidence ({stats.highConf})
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setUseBatchView(!useBatchView)}
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                >
+                  {useBatchView ? "Classic View" : "Batch Review"}
+                </Button>
+                <Button
+                  onClick={handleAutoApprove}
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  disabled={loading || stats.highConf === 0}
+                >
+                  <CheckCircle className="h-4 w-4" />
+                  Auto-Approve High Confidence ({stats.highConf})
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -549,7 +562,7 @@ export default function AdminQuestions() {
         </Card>
 
         {/* Bulk Actions */}
-        {selectedQuestions.size > 0 && (
+        {!useBatchView && selectedQuestions.size > 0 && (
           <Card className="mb-6 border-primary/50 bg-primary/5">
             <CardContent className="py-4">
               <div className="flex items-center justify-between">
@@ -569,8 +582,19 @@ export default function AdminQuestions() {
           </Card>
         )}
 
-        {/* Questions List */}
-        <div className="space-y-4">
+        {/* Conditional Rendering: Batch Review vs Classic View */}
+        {useBatchView ? (
+          <BatchReviewInterface
+            questions={questions}
+            selectedQuestions={selectedQuestions}
+            onToggleQuestion={(id) => handleSelectQuestion(id, !selectedQuestions.has(id))}
+            onBulkApprove={() => handleBulkAction("approve")}
+            onBulkReject={() => handleBulkAction("reject")}
+            onQuickEdit={(question) => startQuickEdit(question)}
+          />
+        ) : (
+          /* Classic Questions List */
+          <div className="space-y-4">
           <div className="flex items-center gap-2 mb-2">
             <Checkbox
               checked={selectedQuestions.size === questions.length && questions.length > 0}
@@ -844,7 +868,8 @@ export default function AdminQuestions() {
               </CardContent>
             </Card>
           )}
-        </div>
+          </div>
+        )}
 
         {/* Pagination */}
         {totalPages > 1 && (
