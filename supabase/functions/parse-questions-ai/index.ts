@@ -6,6 +6,198 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Document analysis result
+interface DocumentProfile {
+  formattingQuality: 'good' | 'poor' | 'terrible';
+  hasTable: boolean;
+  hasDiagrams: boolean;
+  estimatedQuestionCount: number;
+  questionFormat: 'numbered' | 'bulleted' | 'mixed' | 'unknown';
+  answerKeyLocation: 'inline' | 'end-of-section' | 'separate' | 'missing';
+  recommendedModel: string;
+  hasPageNumbers: boolean;
+  hasSections: boolean;
+  specialInstructions: string[];
+}
+
+// Model selection based on document complexity
+function selectModel(profile: DocumentProfile): string {
+  if (profile.formattingQuality === 'terrible' || profile.hasTable) {
+    return 'google/gemini-2.5-pro'; // Best reasoning for complex cases
+  }
+  if (profile.estimatedQuestionCount > 100) {
+    return 'google/gemini-2.5-flash'; // Balanced for large docs
+  }
+  return 'google/gemini-2.5-flash'; // Default quality model
+}
+
+// Analyze document before extraction (Pass 0)
+async function analyzeDocument(text: string, apiKey: string): Promise<DocumentProfile> {
+  const analysisPrompt = `Analyze this document excerpt and provide a structural assessment.
+
+ANALYSIS TASKS:
+1. Formatting quality (good/poor/terrible)
+2. Presence of tables or diagrams
+3. Estimated total question count
+4. Question numbering format
+5. Answer key location
+6. Page number presence
+7. Section headers presence
+
+TEXT SAMPLE (first 3000 chars):
+${text.substring(0, 3000)}
+
+Provide a concise structural analysis.`;
+
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'google/gemini-2.5-flash-lite', // Fast analysis model
+      messages: [
+        { role: 'system', content: 'You are a document analysis expert. Provide brief, accurate assessments.' },
+        { role: 'user', content: analysisPrompt }
+      ],
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'document_analysis',
+            description: 'Analyze document structure and formatting',
+            parameters: {
+              type: 'object',
+              properties: {
+                formattingQuality: { type: 'string', enum: ['good', 'poor', 'terrible'] },
+                hasTable: { type: 'boolean' },
+                hasDiagrams: { type: 'boolean' },
+                estimatedQuestionCount: { type: 'number' },
+                questionFormat: { type: 'string', enum: ['numbered', 'bulleted', 'mixed', 'unknown'] },
+                answerKeyLocation: { type: 'string', enum: ['inline', 'end-of-section', 'separate', 'missing'] },
+                hasPageNumbers: { type: 'boolean' },
+                hasSections: { type: 'boolean' },
+                specialInstructions: { type: 'array', items: { type: 'string' } }
+              },
+              required: ['formattingQuality', 'hasTable', 'estimatedQuestionCount'],
+              additionalProperties: false
+            }
+          }
+        }
+      ],
+      tool_choice: { type: 'function', function: { name: 'document_analysis' } }
+    }),
+  });
+
+  if (!response.ok) {
+    console.warn('Document analysis failed, using defaults');
+    return {
+      formattingQuality: 'good',
+      hasTable: false,
+      hasDiagrams: false,
+      estimatedQuestionCount: 50,
+      questionFormat: 'numbered',
+      answerKeyLocation: 'inline',
+      recommendedModel: 'google/gemini-2.5-flash',
+      hasPageNumbers: false,
+      hasSections: false,
+      specialInstructions: []
+    };
+  }
+
+  const data = await response.json();
+  const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+  
+  if (!toolCall) {
+    throw new Error('No analysis tool call in response');
+  }
+
+  const analysis = JSON.parse(toolCall.function.arguments);
+  const profile: DocumentProfile = {
+    ...analysis,
+    recommendedModel: selectModel(analysis)
+  };
+  
+  console.log('Document analysis:', profile);
+  return profile;
+}
+
+// Pass 1: Fast discovery of question boundaries
+async function discoverQuestions(text: string, module: string, apiKey: string): Promise<any[]> {
+  const discoveryPrompt = `Quickly identify ALL question boundaries in this ${module} text.
+
+For each question found, extract:
+- Approximate location (page/section if visible)
+- Question number/identifier
+- Question text (first 50 chars)
+- Whether it appears complete or needs refinement
+
+TEXT:
+${text}
+
+Find ALL questions, even if formatting is poor.`;
+
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'google/gemini-2.5-flash-lite', // Fast discovery
+      messages: [
+        { role: 'system', content: 'You are a question detector. Identify question boundaries quickly.' },
+        { role: 'user', content: discoveryPrompt }
+      ],
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'discover_questions',
+            description: 'Identify question boundaries',
+            parameters: {
+              type: 'object',
+              properties: {
+                questions: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      question_number: { type: 'string' },
+                      page_number: { type: 'number' },
+                      section: { type: 'string' },
+                      preview: { type: 'string' },
+                      needs_refinement: { type: 'boolean' }
+                    },
+                    required: ['preview']
+                  }
+                }
+              },
+              required: ['questions']
+            }
+          }
+        }
+      ],
+      tool_choice: { type: 'function', function: { name: 'discover_questions' } }
+    }),
+  });
+
+  if (!response.ok) {
+    console.warn('Discovery pass failed, skipping to direct extraction');
+    return [];
+  }
+
+  const data = await response.json();
+  const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+  
+  if (!toolCall) return [];
+
+  const discovered = JSON.parse(toolCall.function.arguments);
+  console.log(`Discovery pass found ${discovered.questions?.length || 0} questions`);
+  return discovered.questions || [];
+}
+
 // Module-specific guidelines for enhanced extraction
 function getModuleSpecificGuidelines(module: string): string {
   const guidelines: Record<string, string> = {
@@ -124,16 +316,33 @@ If you see "15a)" and "15b)" - extract as TWO separate questions
 BE THOROUGH: Your goal is 100% extraction accuracy. Extract every question, even if some details are unclear.`;
 }
 
-// Build user prompt
-function buildUserPrompt(text: string, module: string): string {
+// Build user prompt with context awareness
+function buildUserPrompt(text: string, module: string, profile: DocumentProfile, discoveredContext?: any[]): string {
+  let contextHints = '';
+  
+  if (profile.hasSections) {
+    contextHints += '\n- PRESERVE section/chapter headers when extracting questions';
+  }
+  if (profile.hasPageNumbers) {
+    contextHints += '\n- CAPTURE page numbers where questions appear';
+  }
+  if (discoveredContext && discoveredContext.length > 0) {
+    contextHints += `\n- ${discoveredContext.length} questions were detected in discovery pass - ensure all are extracted`;
+  }
+  if (profile.specialInstructions.length > 0) {
+    contextHints += '\n- Special instructions: ' + profile.specialInstructions.join('; ');
+  }
+
   return `Extract ALL ${module} questions from the following text. Be systematic and thorough:
 
 INSTRUCTIONS:
 1. Read through the entire text carefully
 2. Identify every question, regardless of formatting
 3. Extract each question with its options and correct answer
-4. If any field is unclear, extract what you can and leave the rest empty
-5. Do not skip questions due to poor formatting
+4. CAPTURE CONTEXT: Include section name, page number, and question number if visible
+5. If any field is unclear, extract what you can and leave the rest empty
+6. Do not skip questions due to poor formatting
+${contextHints}
 
 TEXT TO PARSE:
 ${text}
@@ -330,11 +539,13 @@ async function extractWithRetry(
   text: string,
   module: string,
   apiKey: string,
+  profile: DocumentProfile,
+  discoveredContext?: any[],
   maxRetries: number = 3
 ): Promise<any[]> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const questions = await extractQuestionsFromText(text, module, apiKey);
+      const questions = await extractQuestionsFromText(text, module, apiKey, profile, discoveredContext);
       return questions;
     } catch (error: any) {
       console.error(`Attempt ${attempt} failed:`, error.message);
@@ -353,14 +564,16 @@ async function extractWithRetry(
   return [];
 }
 
-// Core extraction function
+// Core extraction function (Pass 2: Refined extraction)
 async function extractQuestionsFromText(
   text: string,
   module: string,
-  apiKey: string
+  apiKey: string,
+  profile: DocumentProfile,
+  discoveredContext?: any[]
 ): Promise<any[]> {
   const systemPrompt = buildSystemPrompt(module);
-  const userPrompt = buildUserPrompt(text, module);
+  const userPrompt = buildUserPrompt(text, module, profile, discoveredContext);
   
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
@@ -369,7 +582,7 @@ async function extractQuestionsFromText(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.5-pro',
+      model: profile.recommendedModel, // Use model selected by document analysis
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -396,7 +609,11 @@ async function extractQuestionsFromText(
                       correct_answer: { 
                         type: 'string', 
                         description: 'The correct answer letter (A, B, C, or D) - can be empty if not found'
-                      }
+                      },
+                      document_section: { type: 'string', description: 'Section or chapter name if visible' },
+                      page_number: { type: 'number', description: 'Page number if visible' },
+                      question_number: { type: 'string', description: 'Original question numbering (e.g., "Q.15", "15a")' },
+                      preceding_context: { type: 'string', description: 'Instructions or context before the question' }
                     },
                     required: ['question', 'option_a', 'option_b', 'option_c', 'option_d'],
                     additionalProperties: false
@@ -449,7 +666,7 @@ serve(async (req) => {
 
   try {
     const { text, module } = await req.json();
-    console.log(`Starting extraction for module: ${module}, text length: ${text.length} chars`);
+    console.log(`Starting Phase 2 extraction for module: ${module}, text length: ${text.length} chars`);
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
@@ -463,7 +680,14 @@ serve(async (req) => {
       .replace(/\s+/g, ' ')
       .trim();
 
+    // PHASE 2 ENHANCEMENT: Pass 0 - Analyze document structure
+    console.log('Pass 0: Analyzing document structure...');
+    const documentProfile = await analyzeDocument(normalizedText, LOVABLE_API_KEY);
+    console.log(`Recommended model: ${documentProfile.recommendedModel}`);
+    console.log(`Estimated questions: ${documentProfile.estimatedQuestionCount}`);
+
     let allQuestions: any[] = [];
+    let discoveredQuestions: any[] = [];
 
     // Determine if chunking is needed (roughly 3000 words = 12000 chars)
     const CHUNK_SIZE = 2500; // words
@@ -471,13 +695,27 @@ serve(async (req) => {
     const estimatedWords = normalizedText.split(/\s+/).length;
 
     if (estimatedWords > CHUNK_SIZE) {
-      console.log(`Large document detected (${estimatedWords} words), using chunked processing`);
+      console.log(`Large document detected (${estimatedWords} words), using chunked processing with two-pass extraction`);
       
       const chunks = createOverlappingChunks(normalizedText, CHUNK_SIZE, OVERLAP);
       
+      // PHASE 2: Pass 1 - Discovery on first chunk to understand structure
+      if (chunks.length > 0) {
+        console.log('Pass 1: Running discovery on first chunk...');
+        discoveredQuestions = await discoverQuestions(chunks[0], module, LOVABLE_API_KEY);
+        console.log(`Discovery pass identified ${discoveredQuestions.length} question boundaries`);
+      }
+      
+      // PHASE 2: Pass 2 - Refined extraction with context
       for (let i = 0; i < chunks.length; i++) {
-        console.log(`Processing chunk ${i + 1}/${chunks.length}`);
-        const chunkQuestions = await extractWithRetry(chunks[i], module, LOVABLE_API_KEY);
+        console.log(`Pass 2: Processing chunk ${i + 1}/${chunks.length} with refined extraction`);
+        const chunkQuestions = await extractWithRetry(
+          chunks[i], 
+          module, 
+          LOVABLE_API_KEY, 
+          documentProfile,
+          i === 0 ? discoveredQuestions : undefined // Use discovery context for first chunk
+        );
         allQuestions.push(...chunkQuestions);
         console.log(`Chunk ${i + 1} yielded ${chunkQuestions.length} questions`);
       }
@@ -485,9 +723,17 @@ serve(async (req) => {
       // Deduplicate across chunks
       allQuestions = deduplicateQuestions(allQuestions);
     } else {
-      // Single extraction for smaller documents
-      console.log(`Processing as single document (${estimatedWords} words)`);
-      allQuestions = await extractWithRetry(normalizedText, module, LOVABLE_API_KEY);
+      // Single document: Two-pass extraction
+      console.log(`Processing as single document (${estimatedWords} words) with two-pass extraction`);
+      
+      // PHASE 2: Pass 1 - Discovery
+      console.log('Pass 1: Running discovery pass...');
+      discoveredQuestions = await discoverQuestions(normalizedText, module, LOVABLE_API_KEY);
+      console.log(`Discovery pass identified ${discoveredQuestions.length} question boundaries`);
+      
+      // PHASE 2: Pass 2 - Refined extraction
+      console.log('Pass 2: Running refined extraction...');
+      allQuestions = await extractWithRetry(normalizedText, module, LOVABLE_API_KEY, documentProfile, discoveredQuestions);
     }
 
     // Validate all extracted questions with quality scoring
@@ -541,6 +787,17 @@ serve(async (req) => {
           chunksProcessed: estimatedWords > CHUNK_SIZE ? Math.ceil(estimatedWords / CHUNK_SIZE) : 1,
           qualityScore,
           needsReview,
+          // Phase 2 metadata
+          documentProfile: {
+            formattingQuality: documentProfile.formattingQuality,
+            estimatedQuestionCount: documentProfile.estimatedQuestionCount,
+            modelUsed: documentProfile.recommendedModel,
+            hasContextData: documentProfile.hasSections || documentProfile.hasPageNumbers
+          },
+          discoveryPassFound: discoveredQuestions.length,
+          questionsWithContext: validatedQuestions.filter((q: any) => 
+            q.document_section || q.page_number || q.question_number
+          ).length,
           qualityMetrics: {
             completionRate: Math.round(completionRate * 100),
             hasMinimumQuestions,

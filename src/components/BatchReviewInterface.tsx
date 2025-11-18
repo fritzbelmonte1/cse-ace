@@ -35,6 +35,11 @@ interface Question {
   status: string;
   document_id: string;
   created_at: string;
+  // Phase 2 context fields
+  document_section?: string | null;
+  page_number?: number | null;
+  question_number?: string | null;
+  preceding_context?: string | null;
   quality?: {
     questionClarity: number;
     optionQuality: number;
@@ -324,6 +329,36 @@ export function BatchReviewInterface({
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
                         <p className="font-medium">{question.question}</p>
+                        
+                        {/* Phase 2: Context Information */}
+                        {(question.document_section || question.page_number || question.question_number) && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {question.document_section && (
+                              <Badge variant="secondary" className="text-xs">
+                                📚 {question.document_section}
+                              </Badge>
+                            )}
+                            {question.page_number && (
+                              <Badge variant="secondary" className="text-xs">
+                                📄 Page {question.page_number}
+                              </Badge>
+                            )}
+                            {question.question_number && (
+                              <Badge variant="secondary" className="text-xs">
+                                🔢 {question.question_number}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                        
+                        {/* Preceding Context */}
+                        {question.preceding_context && (
+                          <div className="mt-2 p-2 bg-muted/30 rounded text-xs text-muted-foreground border border-border/50">
+                            <span className="font-medium">Context: </span>
+                            {question.preceding_context.substring(0, 150)}
+                            {question.preceding_context.length > 150 && '...'}
+                          </div>
+                        )}
                       </div>
                       <div className="flex gap-2 flex-shrink-0">
                         {question.quality && getQualityBadge(question.quality.overallQuality)}

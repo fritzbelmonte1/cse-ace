@@ -230,13 +230,18 @@ export type Database = {
           correct_answer: string
           created_at: string
           document_id: string
+          document_section: string | null
           id: string
           module: string
           option_a: string
           option_b: string
           option_c: string
           option_d: string
+          page_number: number | null
+          preceding_context: string | null
+          quality_metrics: Json | null
           question: string
+          question_number: string | null
           status: string | null
         }
         Insert: {
@@ -246,13 +251,18 @@ export type Database = {
           correct_answer: string
           created_at?: string
           document_id: string
+          document_section?: string | null
           id?: string
           module: string
           option_a: string
           option_b: string
           option_c: string
           option_d: string
+          page_number?: number | null
+          preceding_context?: string | null
+          quality_metrics?: Json | null
           question: string
+          question_number?: string | null
           status?: string | null
         }
         Update: {
@@ -262,13 +272,18 @@ export type Database = {
           correct_answer?: string
           created_at?: string
           document_id?: string
+          document_section?: string | null
           id?: string
           module?: string
           option_a?: string
           option_b?: string
           option_c?: string
           option_d?: string
+          page_number?: number | null
+          preceding_context?: string | null
+          quality_metrics?: Json | null
           question?: string
+          question_number?: string | null
           status?: string | null
         }
         Relationships: [
