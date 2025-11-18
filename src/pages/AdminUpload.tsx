@@ -34,6 +34,7 @@ const AdminUpload = () => {
   const [showOnlyNeedsReview, setShowOnlyNeedsReview] = useState(false);
   const [isReprocessing, setIsReprocessing] = useState(false);
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+  const [isResetting, setIsResetting] = useState(false);
   
   // CSV Import states
   const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -1091,6 +1092,42 @@ ${metadata.chunksProcessed > 1 ? `📄 ${metadata.chunksProcessed} chunks` : ''}
     }
   };
 
+  const handleResetStuckDocuments = async () => {
+    setIsResetting(true);
+    try {
+      const { data: stuckDocs, error: fetchError } = await supabase
+        .from('documents')
+        .select('id, file_name')
+        .eq('processing_status', 'processing');
+
+      if (fetchError) throw fetchError;
+
+      if (!stuckDocs || stuckDocs.length === 0) {
+        toast.info("No stuck documents found");
+        return;
+      }
+
+      const { error: updateError } = await supabase
+        .from('documents')
+        .update({
+          processing_status: 'pending',
+          processed: false,
+          error_message: null
+        })
+        .eq('processing_status', 'processing');
+
+      if (updateError) throw updateError;
+
+      toast.success(`Reset ${stuckDocs.length} stuck document(s) to pending status`);
+      fetchDocuments();
+    } catch (error: any) {
+      console.error('Reset error:', error);
+      toast.error("Failed to reset stuck documents: " + error.message);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   return (
     <>
       <Navigation />
@@ -1461,6 +1498,15 @@ Q: Your question?{'\n'}A: Option A{'\n'}B: Option B{'\n'}C: Option C{'\n'}D: Opt
                 >
                   <RefreshCw className={`w-4 h-4 mr-2 ${isReprocessing ? 'animate-spin' : ''}`} />
                   Fix Stuck RAG Docs
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResetStuckDocuments}
+                  disabled={isResetting}
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${isResetting ? 'animate-spin' : ''}`} />
+                  Reset Stuck Docs
                 </Button>
               </div>
             </div>
