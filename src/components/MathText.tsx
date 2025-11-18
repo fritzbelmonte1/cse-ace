@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 
 interface MathTextProps {
   text: string;
@@ -15,9 +15,29 @@ declare global {
 }
 
 export const MathText = ({ text, className = '' }: MathTextProps) => {
+  const [isKatexLoaded, setIsKatexLoaded] = useState(!!window.katex);
+
+  useEffect(() => {
+    // If already loaded, no need to poll
+    if (window.katex) {
+      setIsKatexLoaded(true);
+      return;
+    }
+
+    // Poll for KaTeX to become available
+    const checkInterval = setInterval(() => {
+      if (window.katex) {
+        setIsKatexLoaded(true);
+        clearInterval(checkInterval);
+      }
+    }, 100);
+
+    return () => clearInterval(checkInterval);
+  }, []);
+
   const renderedContent = useMemo(() => {
-    // Check if KaTeX is loaded from CDN
-    if (!window.katex) {
+    // Show plain text fallback while KaTeX loads
+    if (!isKatexLoaded || !window.katex) {
       return <span className={className}>{text}</span>;
     }
 
@@ -70,7 +90,7 @@ export const MathText = ({ text, className = '' }: MathTextProps) => {
         return <span key={index} className="whitespace-pre-wrap">{part}</span>;
       }
     });
-  }, [text]);
+  }, [text, isKatexLoaded, className]);
 
   return <div className={className}>{renderedContent}</div>;
 };
