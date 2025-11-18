@@ -705,27 +705,23 @@ ${metadata.chunksProcessed > 1 ? `📄 Processed ${metadata.chunksProcessed} chu
             return;
           }
           
-          // Use structured parsing results (existing code below will handle it)
+          // Use structured parsing results
           const structuredQuestions = parseResult.questions;
           console.log(`Structured parser found ${structuredQuestions.length} questions`);
           
           setUploadProgress(40);
           
-          const { data: docData, error: docError } = await supabase
+          // Update the existing document record
+          const { error: updateDocError } = await supabase
             .from('documents')
-            .insert({
-              uploaded_by: user.id,
-              file_name: `pasted-questions-${Date.now()}.txt`,
-              file_path: '',
-              purpose: 'questions',
-              module,
+            .update({
               processed: true,
-              processing_status: 'completed'
+              processing_status: 'completed',
+              error_message: null
             })
-            .select()
-            .maybeSingle();
+            .eq('id', pasteDocData.id);
 
-          if (docError || !docData) throw docError || new Error('Failed to create document record');
+          if (updateDocError) throw updateDocError;
 
           const questionsToInsert = structuredQuestions.map((q) => {
             const normalize = (v?: string) => (typeof v === 'string' ? v : '');
@@ -738,11 +734,11 @@ ${metadata.chunksProcessed > 1 ? `📄 Processed ${metadata.chunksProcessed} chu
               option_b: normalize(q.option_b),
               option_c: normalize(q.option_c),
               option_d: normalize(q.option_d),
-              correct_answer: validAnswer ? q.correct_answer.toUpperCase() : '',
+              correct_answer: validAnswer ? q.correct_answer.toUpperCase() : 'A',
               module,
-              document_id: docData.id,
+              document_id: pasteDocData.id,
               status,
-              confidence_score: 1.0
+              confidence_score: validAnswer ? 1.0 : 0.5
             };
           });
 
@@ -784,22 +780,17 @@ ${metadata.chunksProcessed > 1 ? `📄 Processed ${metadata.chunksProcessed} chu
           setUploadStatus(`Processed ${metadata.chunksProcessed} chunks. Saving...`);
         }
 
-        // Create a document record representing this pasted batch
-        setUploadStatus("Creating document record for pasted questions...");
+        // Update document record with AI extraction results
+        setUploadStatus("Saving extraction results...");
         setUploadProgress(50);
 
         // Calculate quality score for pasted upload metadata
         const uploadQualityScore = metadata.qualityScore || 0;
         const uploadNeedsReview = metadata.needsReview || false;
 
-        const { data: docData, error: docError } = await supabase
+        const { error: updateDocError } = await supabase
           .from('documents')
-          .insert({
-            uploaded_by: user.id,
-            file_name: `pasted-questions-${Date.now()}.txt`,
-            file_path: '',
-            purpose: 'questions',
-            module,
+          .update({
             processed: true,
             processing_status: 'completed',
             quality_score: uploadQualityScore,
@@ -810,13 +801,15 @@ ${metadata.chunksProcessed > 1 ? `📄 Processed ${metadata.chunksProcessed} chu
               incomplete_questions: metadata.incompleteQuestions,
               completion_rate: metadata.qualityMetrics?.completionRate,
               processing_time_seconds: metadata.processingTimeSeconds,
-              chunks_processed: metadata.chunksProcessed
+              chunks_processed: metadata.chunksProcessed,
+              learned_from_corrections: metadata.learnedFromCorrections,
+              semantic_deduplication_applied: metadata.semanticDeduplicationApplied,
+              resumed_from_checkpoint: metadata.resumedFromCheckpoint
             }
           })
-          .select()
-          .maybeSingle();
+          .eq('id', pasteDocData.id);
 
-        if (docError || !docData) throw docError || new Error('Failed to create document record');
+        if (updateDocError) throw updateDocError;
 
         setUploadStatus("Uploading questions to database...");
         setUploadProgress(70);
@@ -825,9 +818,10 @@ ${metadata.chunksProcessed > 1 ? `📄 Processed ${metadata.chunksProcessed} chu
           const normalize = (v?: string) => (typeof v === 'string' ? v : '');
           // Use validation data from edge function if available
           const validation = q.validation || {};
+          const validAnswer = q.correct_answer && /^[ABCD]$/i.test(q.correct_answer);
           const isComplete = validation.isComplete !== undefined 
             ? validation.isComplete 
-            : !!(q.question && q.option_a && q.option_b && q.option_c && q.option_d && q.correct_answer && /^[ABCD]$/i.test(q.correct_answer));
+            : !!(q.question && q.option_a && q.option_b && q.option_c && q.option_d && validAnswer);
           const status = isComplete ? 'approved' : 'pending';
           return {
             question: normalize(q.question) || '[Missing question]',
@@ -835,11 +829,16 @@ ${metadata.chunksProcessed > 1 ? `📄 Processed ${metadata.chunksProcessed} chu
             option_b: normalize(q.option_b),
             option_c: normalize(q.option_c),
             option_d: normalize(q.option_d),
-            correct_answer: q.correct_answer ? q.correct_answer.toUpperCase() : '',
+            correct_answer: validAnswer ? q.correct_answer.toUpperCase() : 'A',
             module,
-            document_id: docData.id,
+            document_id: pasteDocData.id,
             status,
-            confidence_score: 1.0
+            confidence_score: validAnswer ? (q.confidence_score || 1.0) : 0.5,
+            document_section: q.document_section,
+            page_number: q.page_number,
+            question_number: q.question_number,
+            preceding_context: q.preceding_context,
+            quality_metrics: q.quality_metrics
           };
         });
 
