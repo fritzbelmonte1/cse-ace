@@ -154,7 +154,7 @@ export function Navigation() {
             className="flex items-center gap-2 cursor-pointer flex-shrink-0" 
             onClick={() => navigate("/dashboard")}
           >
-            <BookOpen className="h-5 w-5 text-primary" />
+            <img src="/favicon.png" alt="CSE Practice" className="h-6 w-6" />
             <span className="font-semibold text-base hidden sm:inline">CSE Practice</span>
           </div>
 
