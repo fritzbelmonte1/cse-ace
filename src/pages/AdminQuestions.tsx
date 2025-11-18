@@ -185,6 +185,20 @@ export default function AdminQuestions() {
     } else {
       newSelected.delete(id);
     }
+    console.log('Selection updated:', { id, checked, totalSelected: newSelected.size });
+    setSelectedQuestions(newSelected);
+  };
+
+  const handleBatchSelect = (ids: string[], selected: boolean) => {
+    const newSelected = new Set(selectedQuestions);
+    ids.forEach(id => {
+      if (selected) {
+        newSelected.add(id);
+      } else {
+        newSelected.delete(id);
+      }
+    });
+    console.log('Batch selection updated:', { count: ids.length, selected, totalSelected: newSelected.size });
     setSelectedQuestions(newSelected);
   };
 
@@ -588,6 +602,7 @@ export default function AdminQuestions() {
             questions={questions}
             selectedQuestions={selectedQuestions}
             onToggleQuestion={(id) => handleSelectQuestion(id, !selectedQuestions.has(id))}
+            onBatchSelect={handleBatchSelect}
             onBulkApprove={() => handleBulkAction("approve")}
             onBulkReject={() => handleBulkAction("reject")}
             onQuickEdit={(question) => startQuickEdit(question)}

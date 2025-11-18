@@ -55,6 +55,7 @@ interface BatchReviewInterfaceProps {
   questions: Question[];
   selectedQuestions: Set<string>;
   onToggleQuestion: (id: string) => void;
+  onBatchSelect: (ids: string[], selected: boolean) => void;
   onBulkApprove: () => void;
   onBulkReject: () => void;
   onQuickEdit: (question: Question) => void;
@@ -64,6 +65,7 @@ export function BatchReviewInterface({
   questions,
   selectedQuestions,
   onToggleQuestion,
+  onBatchSelect,
   onBulkApprove,
   onBulkReject,
   onQuickEdit
@@ -140,27 +142,30 @@ export function BatchReviewInterface({
 
   const stats = useMemo(() => {
     const total = filteredQuestions.length;
-    const selected = filteredQuestions.filter(q => selectedQuestions.has(q.id)).length;
+    const filteredSelected = filteredQuestions.filter(q => selectedQuestions.has(q.id)).length;
+    const totalSelected = selectedQuestions.size;
     const highQuality = filteredQuestions.filter(q => (q.quality?.overallQuality || 0) >= 0.85).length;
     const needsReview = filteredQuestions.filter(q => q.quality?.needsReview).length;
     
-    return { total, selected, highQuality, needsReview };
+    return { total, filteredSelected, totalSelected, highQuality, needsReview };
   }, [filteredQuestions, selectedQuestions]);
 
   const selectAllFiltered = () => {
-    filteredQuestions.forEach(q => {
-      if (!selectedQuestions.has(q.id)) {
-        onToggleQuestion(q.id);
-      }
-    });
+    const idsToSelect = filteredQuestions
+      .filter(q => !selectedQuestions.has(q.id))
+      .map(q => q.id);
+    if (idsToSelect.length > 0) {
+      onBatchSelect(idsToSelect, true);
+    }
   };
 
   const deselectAll = () => {
-    filteredQuestions.forEach(q => {
-      if (selectedQuestions.has(q.id)) {
-        onToggleQuestion(q.id);
-      }
-    });
+    const idsToDeselect = filteredQuestions
+      .filter(q => selectedQuestions.has(q.id))
+      .map(q => q.id);
+    if (idsToDeselect.length > 0) {
+      onBatchSelect(idsToDeselect, false);
+    }
   };
 
   const getQualityBadge = (quality: number) => {
@@ -184,7 +189,14 @@ export function BatchReviewInterface({
               <div className="text-sm text-muted-foreground">Total Questions</div>
             </div>
             <div>
-              <div className="text-2xl font-bold text-blue-600">{stats.selected}</div>
+              <div className="text-2xl font-bold text-blue-600">
+                {stats.totalSelected}
+                {stats.filteredSelected !== stats.totalSelected && (
+                  <span className="text-sm text-muted-foreground ml-1">
+                    ({stats.filteredSelected} filtered)
+                  </span>
+                )}
+              </div>
               <div className="text-sm text-muted-foreground">Selected</div>
             </div>
             <div>
@@ -269,7 +281,7 @@ export function BatchReviewInterface({
                 variant="outline"
                 size="sm"
                 onClick={deselectAll}
-                disabled={stats.selected === 0}
+                disabled={selectedQuestions.size === 0}
               >
                 Deselect All
               </Button>
@@ -277,20 +289,20 @@ export function BatchReviewInterface({
               <Button
                 size="sm"
                 onClick={onBulkApprove}
-                disabled={stats.selected === 0}
+                disabled={selectedQuestions.size === 0}
                 className="bg-green-600 hover:bg-green-700"
               >
                 <CheckCircle className="mr-2 h-4 w-4" />
-                Approve Selected ({stats.selected})
+                Approve Selected ({selectedQuestions.size})
               </Button>
               <Button
                 size="sm"
                 variant="destructive"
                 onClick={onBulkReject}
-                disabled={stats.selected === 0}
+                disabled={selectedQuestions.size === 0}
               >
                 <XCircle className="mr-2 h-4 w-4" />
-                Reject Selected ({stats.selected})
+                Reject Selected ({selectedQuestions.size})
               </Button>
             </div>
           </div>
