@@ -10,6 +10,7 @@ import { ArrowLeft, Loader2, Lightbulb } from "lucide-react";
 import { toast } from "sonner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Navigation } from "@/components/Navigation";
+import { MathText } from "@/components/MathText";
 
 const Practice = () => {
   const { moduleId } = useParams();
@@ -316,7 +317,7 @@ const Practice = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="px-4">
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{explanation}</p>
+                      <MathText text={explanation} className="text-sm leading-relaxed" />
                     </CardContent>
                   </Card>
                 </Collapsible>
