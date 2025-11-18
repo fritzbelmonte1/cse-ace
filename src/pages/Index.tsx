@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { BookOpen, Brain, TrendingUp, Shield, MessageSquare } from "lucide-react";
+import { Brain, TrendingUp, Shield, MessageSquare } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 const Index = () => {
@@ -21,7 +21,7 @@ const Index = () => {
       <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <BookOpen className="h-6 w-6 text-primary" />
+            <img src="/logo.png" alt="CSE Practice Platform" className="h-8 w-8" />
             <span className="font-bold text-xl">CSE Practice Platform</span>
           </div>
           <Button onClick={() => navigate(isLoggedIn ? "/dashboard" : "/auth")}>
@@ -32,6 +32,9 @@ const Index = () => {
 
       <main className="container mx-auto px-4 py-16">
         <div className="text-center mb-16">
+          <div className="flex justify-center mb-6">
+            <img src="/logo.png" alt="CSE Practice Platform" className="h-32 w-32 animate-in fade-in zoom-in duration-700" />
+          </div>
           <h1 className="text-5xl font-bold mb-4">
             Master the Civil Service Exam
           </h1>
