@@ -11,11 +11,22 @@ import { toast } from "sonner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Navigation } from "@/components/Navigation";
 import { MathText } from "@/components/MathText";
+import { shuffleArray } from "@/lib/utils";
+
+type ShuffledQuestion = {
+  id: string;
+  question: string;
+  module: string;
+  shuffledOptions: string[];
+  shuffledCorrectAnswer: number;
+  originalCorrectAnswer: string;
+  [key: string]: any;
+};
 
 const Practice = () => {
   const { moduleId } = useParams();
   const navigate = useNavigate();
-  const [questions, setQuestions] = useState<any[]>([]);
+  const [questions, setQuestions] = useState<ShuffledQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [answers, setAnswers] = useState<number[]>([]);
@@ -48,8 +59,36 @@ const Practice = () => {
           return;
         }
 
-        setQuestions(data);
-        setAnswers(new Array(data.length).fill(-1));
+        // Shuffle questions and their options
+        const shuffledQuestions = shuffleArray(data).map((q) => {
+          // Create array of options with their original indices
+          const options = [
+            { text: q.option_a, originalIndex: 0 },
+            { text: q.option_b, originalIndex: 1 },
+            { text: q.option_c, originalIndex: 2 },
+            { text: q.option_d, originalIndex: 3 }
+          ];
+          
+          // Shuffle the options
+          const shuffledOptions = shuffleArray(options);
+          
+          // Find which position the correct answer moved to
+          const correctAnswerMap: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+          const originalCorrectIndex = correctAnswerMap[q.correct_answer];
+          const shuffledCorrectAnswer = shuffledOptions.findIndex(
+            opt => opt.originalIndex === originalCorrectIndex
+          );
+          
+          return {
+            ...q,
+            shuffledOptions: shuffledOptions.map(opt => opt.text),
+            shuffledCorrectAnswer,
+            originalCorrectAnswer: q.correct_answer
+          };
+        });
+
+        setQuestions(shuffledQuestions);
+        setAnswers(new Array(shuffledQuestions.length).fill(-1));
       } catch (error: any) {
         console.error('Error fetching questions:', error);
         toast.error("Failed to load questions");
@@ -109,8 +148,7 @@ const Practice = () => {
     }
 
     const score = finalAnswers.reduce((acc, answer, index) => {
-      const correctAnswerIndex = ['A', 'B', 'C', 'D'].indexOf(questions[index].correct_answer);
-      return acc + (answer === correctAnswerIndex ? 1 : 0);
+      return acc + (answer === questions[index].shuffledCorrectAnswer ? 1 : 0);
     }, 0);
 
     try {
@@ -169,22 +207,18 @@ const Practice = () => {
 
     try {
       const currentQuestion = questions[currentIndex];
-      const options = {
-        A: currentQuestion.option_a,
-        B: currentQuestion.option_b,
-        C: currentQuestion.option_c,
-        D: currentQuestion.option_d,
-      };
-
-      const correctAnswerLetter = currentQuestion.correct_answer;
-      const userAnswerLetter = selectedAnswer !== null ? ['A', 'B', 'C', 'D'][selectedAnswer] : undefined;
 
       const { data, error } = await supabase.functions.invoke('explain-question', {
         body: {
           question: currentQuestion.question,
-          options,
-          correctAnswer: correctAnswerLetter,
-          userAnswer: userAnswerLetter,
+          options: {
+            A: currentQuestion.shuffledOptions[0],
+            B: currentQuestion.shuffledOptions[1],
+            C: currentQuestion.shuffledOptions[2],
+            D: currentQuestion.shuffledOptions[3],
+          },
+          correctAnswer: ['A', 'B', 'C', 'D'][currentQuestion.shuffledCorrectAnswer],
+          userAnswer: selectedAnswer !== null ? ['A', 'B', 'C', 'D'][selectedAnswer] : undefined,
         }
       });
 
@@ -226,12 +260,7 @@ const Practice = () => {
   }
 
   const currentQuestion = questions[currentIndex];
-  const options = [
-    currentQuestion.option_a,
-    currentQuestion.option_b,
-    currentQuestion.option_c,
-    currentQuestion.option_d,
-  ];
+  const options = currentQuestion.shuffledOptions;
   const progress = ((currentIndex + 1) / questions.length) * 100;
 
   return (

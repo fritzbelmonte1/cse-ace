@@ -43,14 +43,16 @@ const Results = () => {
         <div className="space-y-4">
           <h2 className="text-2xl font-bold mb-4">Answer Review</h2>
           {questions?.map((question: any, index: number) => {
-            const options = [
+            const options = question.shuffledOptions || [
               question.option_a,
               question.option_b,
               question.option_c,
               question.option_d,
             ];
             const userAnswer = answers[index];
-            const correctAnswerIndex = ['A', 'B', 'C', 'D'].indexOf(question.correct_answer);
+            const correctAnswerIndex = question.shuffledCorrectAnswer !== undefined 
+              ? question.shuffledCorrectAnswer 
+              : ['A', 'B', 'C', 'D'].indexOf(question.correct_answer);
             const isCorrect = userAnswer === correctAnswerIndex;
 
             return (
