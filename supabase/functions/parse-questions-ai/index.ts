@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.81.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -240,8 +241,8 @@ QUANTITATIVE REASONING FOCUS:
   return guidelines[module] || guidelines.numerical;
 }
 
-// Enhanced system prompt with few-shot examples and error avoidance
-function buildSystemPrompt(module: string): string {
+// Enhanced system prompt with learned corrections (Phase 3)
+function buildSystemPrompt(module: string, correctionGuidance: string = ''): string {
   return `You are an expert question extractor specialized in ${module} assessment questions.
 
 CRITICAL EXTRACTION RULES:
@@ -255,6 +256,7 @@ CRITICAL EXTRACTION RULES:
 8. Extract questions even if formatting is poor or inconsistent
 9. If you see "Question X:" or "Q.X" or just a number followed by text, it's likely a question
 10. Don't combine multiple questions into one - extract each separately
+${correctionGuidance}
 
 QUESTION FORMAT REQUIREMENTS:
 - Question text: Must be clear and complete (minimum 10 characters)
@@ -371,6 +373,210 @@ function createOverlappingChunks(text: string, chunkSize: number, overlap: numbe
   
   console.log(`Created ${chunks.length} chunks from ${words.length} words`);
   return chunks;
+}
+
+// Semantic deduplication using AI (Phase 3)
+async function semanticDeduplication(questions: any[], apiKey: string): Promise<any[]> {
+  if (questions.length < 2) return questions;
+  
+  const unique: any[] = [];
+  const duplicatePairs: Array<{q1: number, q2: number, similarity: number}> = [];
+  
+  // First pass: exact and fuzzy deduplication (fast)
+  for (const q of questions) {
+    const isDuplicate = unique.some(existing => {
+      const similarity = calculateSimilarity(
+        q.question?.toLowerCase() || '',
+        existing.question?.toLowerCase() || ''
+      );
+      return similarity > 0.85;
+    });
+    
+    if (!isDuplicate) {
+      unique.push(q);
+    }
+  }
+  
+  // Second pass: semantic check for borderline cases (70-85% text similarity)
+  const borderlinePairs: Array<[number, number]> = [];
+  for (let i = 0; i < unique.length; i++) {
+    for (let j = i + 1; j < unique.length; j++) {
+      const textSimilarity = calculateSimilarity(
+        unique[i].question?.toLowerCase() || '',
+        unique[j].question?.toLowerCase() || ''
+      );
+      
+      if (textSimilarity > 0.70 && textSimilarity < 0.85) {
+        borderlinePairs.push([i, j]);
+      }
+    }
+  }
+  
+  // Use AI for semantic analysis of borderline cases
+  if (borderlinePairs.length > 0 && borderlinePairs.length < 10) { // Limit to avoid excessive API calls
+    console.log(`Running semantic analysis on ${borderlinePairs.length} borderline pairs`);
+    
+    for (const [i, j] of borderlinePairs) {
+      const q1 = unique[i];
+      const q2 = unique[j];
+      
+      const semanticPrompt = `Compare these two questions and determine if they are semantically the same (asking the same thing, just worded differently):
+
+Question 1: ${q1.question}
+Options: A) ${q1.option_a} B) ${q1.option_b} C) ${q1.option_c} D) ${q1.option_d}
+
+Question 2: ${q2.question}
+Options: A) ${q2.option_a} B) ${q2.option_b} C) ${q2.option_c} D) ${q2.option_d}
+
+Are these semantically identical (testing the same concept)?`;
+
+      try {
+        const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'google/gemini-2.5-flash-lite',
+            messages: [
+              { role: 'system', content: 'You are a semantic similarity expert. Respond with only "yes" or "no".' },
+              { role: 'user', content: semanticPrompt }
+            ],
+            max_tokens: 10
+          }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          const answer = data.choices?.[0]?.message?.content?.toLowerCase().trim();
+          
+          if (answer?.includes('yes')) {
+            duplicatePairs.push({ q1: i, q2: j, similarity: 0.9 });
+          }
+        }
+      } catch (error) {
+        console.warn('Semantic analysis failed for pair:', error);
+      }
+    }
+  }
+  
+  // Remove semantic duplicates (keep first occurrence)
+  const toRemove = new Set<number>();
+  for (const { q1, q2 } of duplicatePairs) {
+    toRemove.add(q2); // Keep q1, remove q2
+  }
+  
+  const finalUnique = unique.filter((_, idx) => !toRemove.has(idx));
+  
+  console.log(`Semantic deduplication: ${questions.length} -> ${unique.length} (fuzzy) -> ${finalUnique.length} (semantic)`);
+  return finalUnique;
+}
+
+// Get correction patterns for learning (Phase 3)
+async function getCorrectionPatterns(module: string, supabase: any): Promise<string> {
+  try {
+    // Get recent corrections for this module
+    const { data: corrections, error } = await supabase
+      .from('question_corrections')
+      .select(`
+        field_changed,
+        correction_type,
+        original_value,
+        corrected_value
+      `)
+      .eq('correction_type', 'content')
+      .order('corrected_at', { ascending: false })
+      .limit(20);
+    
+    if (error || !corrections || corrections.length === 0) {
+      return '';
+    }
+    
+    // Analyze patterns
+    const patterns: Record<string, number> = {};
+    corrections.forEach((c: any) => {
+      if (c.field_changed === 'question') {
+        // Detect common correction patterns
+        if (c.corrected_value.length > c.original_value.length * 1.3) {
+          patterns['expand_abbreviated'] = (patterns['expand_abbreviated'] || 0) + 1;
+        }
+        if (c.corrected_value.match(/^[A-Z]/) && !c.original_value.match(/^[A-Z]/)) {
+          patterns['capitalize_questions'] = (patterns['capitalize_questions'] || 0) + 1;
+        }
+        if (c.corrected_value.includes('?') && !c.original_value.includes('?')) {
+          patterns['add_question_mark'] = (patterns['add_question_mark'] || 0) + 1;
+        }
+      }
+    });
+    
+    // Build guidance from patterns
+    const guidance: string[] = [];
+    if (patterns['expand_abbreviated'] > 3) {
+      guidance.push('- Expand abbreviated terms in questions (common admin correction)');
+    }
+    if (patterns['capitalize_questions'] > 3) {
+      guidance.push('- Ensure questions start with capital letters (common admin correction)');
+    }
+    if (patterns['add_question_mark'] > 3) {
+      guidance.push('- Add question marks to interrogative sentences (common admin correction)');
+    }
+    
+    if (guidance.length > 0) {
+      return '\n\nLEARNED FROM PREVIOUS CORRECTIONS:\n' + guidance.join('\n');
+    }
+    
+    return '';
+  } catch (error) {
+    console.warn('Failed to fetch correction patterns:', error);
+    return '';
+  }
+}
+
+// Save processing checkpoint (Phase 3)
+async function saveCheckpoint(
+  documentId: string,
+  checkpoint: any,
+  supabase: any
+): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('documents')
+      .update({ processing_checkpoint: checkpoint })
+      .eq('id', documentId);
+    
+    if (error) {
+      console.error('Failed to save checkpoint:', error);
+    }
+  } catch (error) {
+    console.error('Checkpoint save error:', error);
+  }
+}
+
+// Load processing checkpoint (Phase 3)
+async function loadCheckpoint(documentId: string, supabase: any): Promise<any | null> {
+  try {
+    const { data, error } = await supabase
+      .from('documents')
+      .select('processing_checkpoint')
+      .eq('id', documentId)
+      .single();
+    
+    if (error || !data) {
+      return null;
+    }
+    
+    const checkpoint = data.processing_checkpoint;
+    if (checkpoint && Object.keys(checkpoint).length > 0) {
+      console.log('Resuming from checkpoint:', checkpoint);
+      return checkpoint;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Checkpoint load error:', error);
+    return null;
+  }
 }
 
 // Deduplicate questions based on similarity
@@ -541,11 +747,12 @@ async function extractWithRetry(
   apiKey: string,
   profile: DocumentProfile,
   discoveredContext?: any[],
+  correctionGuidance: string = '',
   maxRetries: number = 3
 ): Promise<any[]> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const questions = await extractQuestionsFromText(text, module, apiKey, profile, discoveredContext);
+      const questions = await extractQuestionsFromText(text, module, apiKey, profile, discoveredContext, correctionGuidance);
       return questions;
     } catch (error: any) {
       console.error(`Attempt ${attempt} failed:`, error.message);
@@ -570,9 +777,10 @@ async function extractQuestionsFromText(
   module: string,
   apiKey: string,
   profile: DocumentProfile,
-  discoveredContext?: any[]
+  discoveredContext?: any[],
+  correctionGuidance: string = ''
 ): Promise<any[]> {
-  const systemPrompt = buildSystemPrompt(module);
+  const systemPrompt = buildSystemPrompt(module, correctionGuidance);
   const userPrompt = buildUserPrompt(text, module, profile, discoveredContext);
   
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -665,12 +873,35 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    const { text, module } = await req.json();
-    console.log(`Starting Phase 2 extraction for module: ${module}, text length: ${text.length} chars`);
+    const { text, module, documentId } = await req.json();
+    console.log(`Starting Phase 3 extraction for module: ${module}, text length: ${text.length} chars, documentId: ${documentId || 'N/A'}`);
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
     if (!LOVABLE_API_KEY) {
       throw new Error('LOVABLE_API_KEY not configured');
+    }
+
+    // Initialize Supabase client for Phase 3 features
+    const supabase = documentId && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+      ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+      : null;
+
+    // PHASE 3: Load correction patterns for learning
+    const correctionGuidance = supabase 
+      ? await getCorrectionPatterns(module, supabase)
+      : '';
+    
+    if (correctionGuidance) {
+      console.log('Applying learned correction patterns to extraction');
+    }
+
+    // PHASE 3: Check for existing checkpoint (resume capability)
+    let checkpoint: any = null;
+    if (documentId && supabase) {
+      checkpoint = await loadCheckpoint(documentId, supabase);
     }
 
     // Normalize text
@@ -680,7 +911,7 @@ serve(async (req) => {
       .replace(/\s+/g, ' ')
       .trim();
 
-    // PHASE 2 ENHANCEMENT: Pass 0 - Analyze document structure
+    // PHASE 2: Pass 0 - Analyze document structure
     console.log('Pass 0: Analyzing document structure...');
     const documentProfile = await analyzeDocument(normalizedText, LOVABLE_API_KEY);
     console.log(`Recommended model: ${documentProfile.recommendedModel}`);
@@ -689,39 +920,89 @@ serve(async (req) => {
     let allQuestions: any[] = [];
     let discoveredQuestions: any[] = [];
 
-    // Determine if chunking is needed (roughly 3000 words = 12000 chars)
+    // Determine if chunking is needed
     const CHUNK_SIZE = 2500; // words
     const OVERLAP = 200; // words
     const estimatedWords = normalizedText.split(/\s+/).length;
+
+    // PHASE 3: Resume from checkpoint if available
+    let startChunk = 0;
+    if (checkpoint && checkpoint.lastProcessedChunk !== undefined) {
+      startChunk = checkpoint.lastProcessedChunk + 1;
+      allQuestions = checkpoint.extractedQuestions || [];
+      console.log(`Resuming from chunk ${startChunk}, already extracted ${allQuestions.length} questions`);
+    }
 
     if (estimatedWords > CHUNK_SIZE) {
       console.log(`Large document detected (${estimatedWords} words), using chunked processing with two-pass extraction`);
       
       const chunks = createOverlappingChunks(normalizedText, CHUNK_SIZE, OVERLAP);
+      const totalChunks = chunks.length;
       
-      // PHASE 2: Pass 1 - Discovery on first chunk to understand structure
-      if (chunks.length > 0) {
+      // PHASE 3: Save initial checkpoint
+      if (documentId && supabase && !checkpoint) {
+        await saveCheckpoint(documentId, {
+          totalChunks,
+          lastProcessedChunk: -1,
+          extractedQuestions: [],
+          failedChunks: [],
+          startedAt: new Date().toISOString()
+        }, supabase);
+      }
+      
+      // PHASE 2: Pass 1 - Discovery on first chunk
+      if (startChunk === 0 && chunks.length > 0) {
         console.log('Pass 1: Running discovery on first chunk...');
         discoveredQuestions = await discoverQuestions(chunks[0], module, LOVABLE_API_KEY);
         console.log(`Discovery pass identified ${discoveredQuestions.length} question boundaries`);
       }
       
-      // PHASE 2: Pass 2 - Refined extraction with context
-      for (let i = 0; i < chunks.length; i++) {
+      // PHASE 2+3: Pass 2 - Refined extraction with checkpoints
+      for (let i = startChunk; i < chunks.length; i++) {
         console.log(`Pass 2: Processing chunk ${i + 1}/${chunks.length} with refined extraction`);
-        const chunkQuestions = await extractWithRetry(
-          chunks[i], 
-          module, 
-          LOVABLE_API_KEY, 
-          documentProfile,
-          i === 0 ? discoveredQuestions : undefined // Use discovery context for first chunk
-        );
-        allQuestions.push(...chunkQuestions);
-        console.log(`Chunk ${i + 1} yielded ${chunkQuestions.length} questions`);
+        
+        try {
+          const chunkQuestions = await extractWithRetry(
+            chunks[i], 
+            module, 
+            LOVABLE_API_KEY, 
+            documentProfile,
+            i === 0 ? discoveredQuestions : undefined,
+            correctionGuidance
+          );
+          allQuestions.push(...chunkQuestions);
+          console.log(`Chunk ${i + 1} yielded ${chunkQuestions.length} questions (total: ${allQuestions.length})`);
+          
+          // PHASE 3: Save checkpoint after each chunk
+          if (documentId && supabase) {
+            await saveCheckpoint(documentId, {
+              totalChunks,
+              lastProcessedChunk: i,
+              extractedQuestions: allQuestions,
+              failedChunks: checkpoint?.failedChunks || [],
+              startedAt: checkpoint?.startedAt || new Date().toISOString(),
+              progress: Math.round(((i + 1) / totalChunks) * 100)
+            }, supabase);
+          }
+        } catch (error: any) {
+          console.error(`Chunk ${i + 1} failed:`, error.message);
+          
+          // PHASE 3: Track failed chunk
+          if (documentId && supabase) {
+            const failedChunks = checkpoint?.failedChunks || [];
+            failedChunks.push(i);
+            await saveCheckpoint(documentId, {
+              ...checkpoint,
+              failedChunks,
+              lastProcessedChunk: i
+            }, supabase);
+          }
+        }
       }
       
-      // Deduplicate across chunks
-      allQuestions = deduplicateQuestions(allQuestions);
+      // PHASE 3: Semantic deduplication across chunks
+      console.log('Phase 3: Running semantic deduplication...');
+      allQuestions = await semanticDeduplication(allQuestions, LOVABLE_API_KEY);
     } else {
       // Single document: Two-pass extraction
       console.log(`Processing as single document (${estimatedWords} words) with two-pass extraction`);
@@ -731,9 +1012,25 @@ serve(async (req) => {
       discoveredQuestions = await discoverQuestions(normalizedText, module, LOVABLE_API_KEY);
       console.log(`Discovery pass identified ${discoveredQuestions.length} question boundaries`);
       
-      // PHASE 2: Pass 2 - Refined extraction
-      console.log('Pass 2: Running refined extraction...');
-      allQuestions = await extractWithRetry(normalizedText, module, LOVABLE_API_KEY, documentProfile, discoveredQuestions);
+      // PHASE 2+3: Pass 2 - Refined extraction with corrections
+      console.log('Pass 2: Running refined extraction with learned patterns...');
+      allQuestions = await extractWithRetry(
+        normalizedText, 
+        module, 
+        LOVABLE_API_KEY, 
+        documentProfile, 
+        discoveredQuestions,
+        correctionGuidance
+      );
+      
+      // PHASE 3: Semantic deduplication
+      console.log('Phase 3: Running semantic deduplication...');
+      allQuestions = await semanticDeduplication(allQuestions, LOVABLE_API_KEY);
+    }
+
+    // PHASE 3: Clear checkpoint on successful completion
+    if (documentId && supabase) {
+      await saveCheckpoint(documentId, { completed: true }, supabase);
     }
 
     // Validate all extracted questions with quality scoring
@@ -798,6 +1095,10 @@ serve(async (req) => {
           questionsWithContext: validatedQuestions.filter((q: any) => 
             q.document_section || q.page_number || q.question_number
           ).length,
+          // Phase 3 metadata
+          learnedFromCorrections: correctionGuidance.length > 0,
+          semanticDeduplicationApplied: true,
+          resumedFromCheckpoint: checkpoint !== null,
           qualityMetrics: {
             completionRate: Math.round(completionRate * 100),
             hasMinimumQuestions,
