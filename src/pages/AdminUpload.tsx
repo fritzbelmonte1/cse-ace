@@ -458,11 +458,28 @@ const AdminUpload = () => {
         return;
       }
 
-      setUploadProgress(20);
-      setUploadStatus("Processing with advanced AI model (gemini-2.5-pro)...");
+      // Create document record with quality metrics
+      const { data: aiDocData, error: aiDocError } = await supabase
+        .from('documents')
+        .insert({
+          uploaded_by: user.id,
+          file_name: `ai-parsed-${Date.now()}.txt`,
+          file_path: '',
+          purpose: 'questions',
+          module,
+          processed: false,
+          processing_status: 'processing',
+        })
+        .select()
+        .maybeSingle();
+
+      if (aiDocError || !aiDocData) throw aiDocError || new Error('Failed to create document record');
+
+      setUploadProgress(30);
+      setUploadStatus("Processing with Phase 3 AI (learning + semantic dedup)...");
 
       const { data, error } = await supabase.functions.invoke('parse-questions-ai', {
-        body: { text: pastedText, module }
+        body: { text: pastedText, module, documentId: aiDocData.id }
       });
 
       if (error) {
@@ -485,35 +502,29 @@ const AdminUpload = () => {
       setUploadProgress(60);
 
       const metadata = data.metadata || {};
-      console.log(`AI Extraction Stats:`, {
+      console.log(`Phase 3 Extraction:`, {
         total: data.questions.length,
         complete: metadata.completeQuestions,
-        incomplete: metadata.incompleteQuestions,
-        processingTime: metadata.processingTimeSeconds,
-        chunksProcessed: metadata.chunksProcessed
+        learnedFromCorrections: metadata.learnedFromCorrections,
+        semanticDedup: metadata.semanticDeduplicationApplied,
+        resumed: metadata.resumedFromCheckpoint
       });
 
       // Show extraction progress
       if (metadata.chunksProcessed > 1) {
-        setUploadStatus(`Processed ${metadata.chunksProcessed} document chunks. Deduplicating...`);
+        setUploadStatus(`Processed ${metadata.chunksProcessed} chunks with semantic dedup...`);
       }
 
       setUploadProgress(70);
       setUploadStatus("Validating and saving questions...");
 
-      // Calculate quality score for document
+      // Update document with quality metrics
       const docQualityScore = metadata.qualityScore || 0;
       const docNeedsReview = metadata.needsReview || false;
 
-      // Create document record with quality metrics
-      const { data: docData, error: docError } = await supabase
+      await supabase
         .from('documents')
-        .insert({
-          uploaded_by: user.id,
-          file_name: `ai-parsed-${Date.now()}.txt`,
-          file_path: '',
-          purpose: 'questions',
-          module,
+        .update({
           processed: true,
           processing_status: 'completed',
           quality_score: docQualityScore,
@@ -524,13 +535,12 @@ const AdminUpload = () => {
             incomplete_questions: metadata.incompleteQuestions,
             completion_rate: metadata.qualityMetrics?.completionRate,
             processing_time_seconds: metadata.processingTimeSeconds,
-            chunks_processed: metadata.chunksProcessed
+            chunks_processed: metadata.chunksProcessed,
+            learned_from_corrections: metadata.learnedFromCorrections,
+            semantic_dedup_applied: metadata.semanticDeduplicationApplied
           }
         })
-        .select()
-        .maybeSingle();
-
-      if (docError || !docData) throw docError || new Error('Failed to create document record');
+        .eq('id', aiDocData.id);
 
       setUploadProgress(80);
 
@@ -552,7 +562,7 @@ const AdminUpload = () => {
           option_d: q.option_d || '',
           correct_answer: q.correct_answer ? q.correct_answer.toUpperCase() : '',
           module,
-          document_id: docData.id,
+              document_id: aiDocData.id,
           status,
           confidence_score: 1.0
         };
@@ -647,16 +657,43 @@ ${metadata.chunksProcessed > 1 ? `📄 Processed ${metadata.chunksProcessed} chu
 
       // Handle question paste - try AI parsing for better results
       if (purpose === "questions" && inputMethod === "paste") {
-        setUploadStatus("Enhanced AI is analyzing your text...");
+        // Create document first for progress tracking
+        const { data: pasteDocData, error: pasteDocError } = await supabase
+          .from('documents')
+          .insert({
+            uploaded_by: user.id,
+            file_name: `pasted-questions-${Date.now()}.txt`,
+            file_path: '',
+            purpose: 'questions',
+            module,
+            processed: false,
+            processing_status: 'processing'
+          })
+          .select()
+          .maybeSingle();
+
+        if (pasteDocError || !pasteDocData) throw pasteDocError || new Error('Failed to create document record');
+
+        setUploadStatus("Enhanced AI with Phase 3 features...");
         setUploadProgress(20);
 
-        // Use AI to parse questions
+        // Use AI to parse questions with documentId for progress tracking
         const { data: aiData, error: aiError } = await supabase.functions.invoke('parse-questions-ai', {
-          body: { text: pastedText, module }
+          body: { text: pastedText, module, documentId: pasteDocData.id }
         });
 
         if (aiError || !aiData?.questions || aiData.questions.length === 0) {
           console.error('AI parsing failed, trying structured format:', aiError);
+          
+          // Update document status to failed
+          await supabase
+            .from('documents')
+            .update({ 
+              processed: true, 
+              processing_status: 'failed',
+              error_message: 'AI parsing failed, fallback used'
+            })
+            .eq('id', pasteDocData.id);
           
           // Fallback to structured parsing
           setUploadStatus("Trying structured format...");

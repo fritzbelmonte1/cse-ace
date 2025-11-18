@@ -185,6 +185,7 @@ export type Database = {
           module: string | null
           needs_review: boolean | null
           processed: boolean | null
+          processing_checkpoint: Json | null
           processing_status: string | null
           purpose: string
           quality_score: number | null
@@ -200,6 +201,7 @@ export type Database = {
           module?: string | null
           needs_review?: boolean | null
           processed?: boolean | null
+          processing_checkpoint?: Json | null
           processing_status?: string | null
           purpose: string
           quality_score?: number | null
@@ -215,6 +217,7 @@ export type Database = {
           module?: string | null
           needs_review?: boolean | null
           processed?: boolean | null
+          processing_checkpoint?: Json | null
           processing_status?: string | null
           purpose?: string
           quality_score?: number | null
@@ -575,6 +578,60 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      question_corrections: {
+        Row: {
+          corrected_at: string | null
+          corrected_by: string | null
+          corrected_value: string | null
+          correction_type: string
+          created_at: string | null
+          document_id: string | null
+          field_changed: string
+          id: string
+          original_question_id: string
+          original_value: string | null
+        }
+        Insert: {
+          corrected_at?: string | null
+          corrected_by?: string | null
+          corrected_value?: string | null
+          correction_type: string
+          created_at?: string | null
+          document_id?: string | null
+          field_changed: string
+          id?: string
+          original_question_id: string
+          original_value?: string | null
+        }
+        Update: {
+          corrected_at?: string | null
+          corrected_by?: string | null
+          corrected_value?: string | null
+          correction_type?: string
+          created_at?: string | null
+          document_id?: string | null
+          field_changed?: string
+          id?: string
+          original_question_id?: string
+          original_value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "question_corrections_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "question_corrections_original_question_id_fkey"
+            columns: ["original_question_id"]
+            isOneToOne: false
+            referencedRelation: "extracted_questions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       question_versions: {
         Row: {
