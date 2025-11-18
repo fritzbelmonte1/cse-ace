@@ -25,6 +25,15 @@ serve(async (req) => {
     
     let prompt = `You are an expert tutor explaining CSE exam questions. Provide a clear, concise explanation.
 
+IMPORTANT: Use proper LaTeX notation for all mathematical expressions:
+- For inline math (within text): use $expression$ (e.g., "The formula $E = mc^2$ shows...")
+- For display math (centered): use $$expression$$ (e.g., $$\\int_0^\\infty e^{-x} dx = 1$$)
+- Common LaTeX examples:
+  * Matrices: $\\mathbf{A}$ or $\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}$
+  * Fractions: $\\frac{numerator}{denominator}$
+  * Greek letters: $\\alpha, \\beta, \\gamma$
+  * Equations: $ax^2 + bx + c = 0$
+
 Question: ${question}
 
 Options:
