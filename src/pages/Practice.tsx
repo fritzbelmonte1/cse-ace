@@ -111,7 +111,7 @@ const Practice = () => {
     if (currentIndex < questions.length - 1) {
       const nextIndex = currentIndex + 1;
       setCurrentIndex(nextIndex);
-      setSelectedAnswer(answers[nextIndex] === -1 ? null : answers[nextIndex]);
+      setSelectedAnswer(null);
       
       // Load cached explanation if available
       if (explanationCache[nextIndex]) {
@@ -128,7 +128,7 @@ const Practice = () => {
     if (currentIndex > 0) {
       const prevIndex = currentIndex - 1;
       setCurrentIndex(prevIndex);
-      setSelectedAnswer(answers[prevIndex] === -1 ? null : answers[prevIndex]);
+      setSelectedAnswer(null);
       
       // Load cached explanation if available
       if (explanationCache[prevIndex]) {

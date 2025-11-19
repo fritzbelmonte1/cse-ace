@@ -503,7 +503,7 @@ export default function ExamInterface() {
                 <p className="text-base sm:text-lg leading-relaxed">{currentQuestion.question}</p>
               </div>
 
-              <RadioGroup value={answers[currentQuestionIndex] || ""} onValueChange={handleAnswerChange}>
+              <RadioGroup value="" onValueChange={handleAnswerChange}>
                 <div className="space-y-3">
                   {["option_a", "option_b", "option_c", "option_d"].map((optionKey) => (
                     <div 
