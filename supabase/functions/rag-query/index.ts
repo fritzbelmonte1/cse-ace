@@ -57,19 +57,61 @@ serve(async (req) => {
 
     console.log(`Fetched ${allChunks.length} total chunks for analysis`);
 
-    // Use Gemini to SELECT most relevant chunks
-    const chunkSelectionPrompt = `You are a CSE exam knowledge retrieval system. 
+    // Step 1: Keyword pre-filtering for efficiency
+    const extractKeywords = (text: string): string[] => {
+      // Remove common words and extract meaningful terms
+      const stopWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'what', 'how', 'why', 'when', 'where', 'who', 'which', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but']);
+      const words = text.toLowerCase()
+        .replace(/[^\w\s]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 3 && !stopWords.has(w));
+      
+      // Return unique keywords
+      return [...new Set(words)];
+    };
+
+    const queryKeywords = extractKeywords(query);
+    console.log(`Extracted keywords from query: ${queryKeywords.join(', ')}`);
+
+    // Score chunks based on keyword matches
+    const scoredChunks = allChunks.map((chunk: any) => {
+      const chunkText = chunk.content.toLowerCase();
+      let score = 0;
+      
+      queryKeywords.forEach(keyword => {
+        const regex = new RegExp(keyword, 'gi');
+        const matches = (chunkText.match(regex) || []).length;
+        score += matches;
+      });
+      
+      return { ...chunk, keywordScore: score };
+    });
+
+    // Pre-filter to top 20 chunks by keyword matching (or all if fewer)
+    const preFilteredChunks = scoredChunks
+      .filter((c: any) => c.keywordScore > 0)
+      .sort((a: any, b: any) => b.keywordScore - a.keywordScore)
+      .slice(0, 20);
+
+    console.log(`Pre-filtered to ${preFilteredChunks.length} chunks with keyword matches`);
+
+    // If no keyword matches, fall back to first 20 chunks
+    const chunksForAI = preFilteredChunks.length > 0 ? preFilteredChunks : allChunks.slice(0, 20);
+
+    // Step 2: Use Gemini to SELECT most relevant chunks from pre-filtered set
+    const chunkSelectionPrompt = `You are a CSE exam knowledge retrieval system.
 
 User Question: "${query}"
 
-Here are ALL available document chunks (${allChunks.length} total):
+Here are the pre-filtered document chunks (${chunksForAI.length} most relevant by keyword matching):
 
-${allChunks.map((c: any, idx: number) => `
-CHUNK ${idx + 1} (from ${c.documents.file_name}, module: ${c.documents.module}):
+${chunksForAI.map((c: any, idx: number) => `
+CHUNK ${idx + 1} (from ${c.documents.file_name}, module: ${c.documents.module}, keyword_score: ${c.keywordScore || 0}):
 ${c.content.substring(0, 500)}...
 `).join('\n---\n')}
 
-Task: Return ONLY the numbers (1-${allChunks.length}) of the TOP 5 most relevant chunks for answering the question.
+Task: Return ONLY the numbers (1-${chunksForAI.length}) of the TOP 5 most relevant chunks for answering the question.
+Consider both keyword relevance and semantic meaning.
 Format your response as a JSON array of numbers, e.g.: [3, 7, 12, 1, 9]
 
 If no chunks are relevant, return an empty array: []`;
@@ -125,9 +167,9 @@ If no chunks are relevant, return an empty array: []`;
       selectedIndices = [1, 2, 3, 4, 5]; // Fallback
     }
 
-    // Convert to 0-indexed and filter valid chunks
+    // Convert to 0-indexed and filter valid chunks from pre-filtered set
     const selectedChunks = selectedIndices
-      .map((idx: number) => allChunks[idx - 1])
+      .map((idx: number) => chunksForAI[idx - 1])
       .filter(Boolean)
       .slice(0, 5);
 
