@@ -7,6 +7,78 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Levenshtein distance for fuzzy string matching
+function levenshteinDistance(str1: string, str2: string): number {
+  const len1 = str1.length;
+  const len2 = str2.length;
+  const matrix: number[][] = Array(len1 + 1).fill(null).map(() => Array(len2 + 1).fill(0));
+  
+  for (let i = 0; i <= len1; i++) matrix[i][0] = i;
+  for (let j = 0; j <= len2; j++) matrix[0][j] = j;
+  
+  for (let i = 1; i <= len1; i++) {
+    for (let j = 1; j <= len2; j++) {
+      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      );
+    }
+  }
+  
+  return matrix[len1][len2];
+}
+
+function similarityScore(str1: string, str2: string): number {
+  const distance = levenshteinDistance(str1.toLowerCase(), str2.toLowerCase());
+  const maxLength = Math.max(str1.length, str2.length);
+  return maxLength === 0 ? 1.0 : 1 - (distance / maxLength);
+}
+
+// Filter out cross-document duplicates during reprocessing
+async function filterCrossDocumentDuplicates(
+  questions: any[],
+  currentDocumentId: string,
+  supabase: any
+): Promise<{ unique: any[], duplicates: number }> {
+  console.log(`Checking ${questions.length} questions for cross-document duplicates...`);
+  
+  // Fetch existing questions from OTHER documents (not the current one being reprocessed)
+  const { data: existingQuestions, error } = await supabase
+    .from('extracted_questions')
+    .select('question')
+    .neq('document_id', currentDocumentId);
+  
+  if (error) {
+    console.error('Error fetching existing questions:', error);
+    return { unique: questions, duplicates: 0 };
+  }
+  
+  if (!existingQuestions || existingQuestions.length === 0) {
+    console.log('No existing questions to compare against');
+    return { unique: questions, duplicates: 0 };
+  }
+  
+  console.log(`Comparing against ${existingQuestions.length} existing questions from other documents`);
+  
+  // Filter using fuzzy matching (85% similarity threshold)
+  const unique = questions.filter(newQ => {
+    const isDuplicate = existingQuestions.some((existing: any) => {
+      return similarityScore(newQ.question, existing.question) > 0.85;
+    });
+    return !isDuplicate;
+  });
+  
+  const duplicatesCount = questions.length - unique.length;
+  console.log(`Filtered out ${duplicatesCount} cross-document duplicates, keeping ${unique.length} unique questions`);
+  
+  return {
+    unique,
+    duplicates: duplicatesCount
+  };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -97,9 +169,27 @@ serve(async (req) => {
           console.error(`Failed to delete old questions: ${deleteError.message}`);
         }
 
-        // Insert new extracted questions
+        // Filter out cross-document duplicates before inserting
+        let questionsToProcess = questions;
+        let duplicatesCount = 0;
+        
         if (questions.length > 0) {
-          const questionsToInsert = questions.map((q: any) => ({
+          const { unique, duplicates } = await filterCrossDocumentDuplicates(
+            questions,
+            doc.id,
+            supabase
+          );
+          questionsToProcess = unique;
+          duplicatesCount = duplicates;
+          
+          if (duplicatesCount > 0) {
+            console.log(`⚠️ Skipped ${duplicatesCount} cross-document duplicate questions during reprocessing`);
+          }
+        }
+
+        // Insert new extracted questions
+        if (questionsToProcess.length > 0) {
+          const questionsToInsert = questionsToProcess.map((q: any) => ({
             document_id: doc.id,
             module: doc.module,
             question: q.question,

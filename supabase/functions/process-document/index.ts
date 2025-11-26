@@ -48,6 +48,79 @@ function sanitizeText(text: string): string {
   return sanitized;
 }
 
+// Levenshtein distance for fuzzy string matching
+function levenshteinDistance(str1: string, str2: string): number {
+  const len1 = str1.length;
+  const len2 = str2.length;
+  const matrix: number[][] = Array(len1 + 1).fill(null).map(() => Array(len2 + 1).fill(0));
+  
+  for (let i = 0; i <= len1; i++) matrix[i][0] = i;
+  for (let j = 0; j <= len2; j++) matrix[0][j] = j;
+  
+  for (let i = 1; i <= len1; i++) {
+    for (let j = 1; j <= len2; j++) {
+      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      );
+    }
+  }
+  
+  return matrix[len1][len2];
+}
+
+function similarityScore(str1: string, str2: string): number {
+  const distance = levenshteinDistance(str1.toLowerCase(), str2.toLowerCase());
+  const maxLength = Math.max(str1.length, str2.length);
+  return maxLength === 0 ? 1.0 : 1 - (distance / maxLength);
+}
+
+// Filter out cross-document duplicates
+async function filterCrossDocumentDuplicates(
+  questions: any[],
+  currentDocumentId: string,
+  supabase: any
+): Promise<{ unique: any[], duplicates: number }> {
+  console.log(`Checking ${questions.length} questions for cross-document duplicates...`);
+  
+  // Fetch existing questions from other documents
+  const { data: existingQuestions, error } = await supabase
+    .from('extracted_questions')
+    .select('question')
+    .neq('document_id', currentDocumentId);
+  
+  if (error) {
+    console.error('Error fetching existing questions:', error);
+    return { unique: questions, duplicates: 0 };
+  }
+  
+  if (!existingQuestions || existingQuestions.length === 0) {
+    console.log('No existing questions to compare against');
+    return { unique: questions, duplicates: 0 };
+  }
+  
+  console.log(`Comparing against ${existingQuestions.length} existing questions from other documents`);
+  
+  // Filter using fuzzy matching (85% similarity threshold)
+  const unique = questions.filter(newQ => {
+    const isDuplicate = existingQuestions.some((existing: any) => {
+      return similarityScore(newQ.question_text, existing.question) > 0.85;
+    });
+    return !isDuplicate;
+  });
+  
+  const duplicatesCount = questions.length - unique.length;
+  console.log(`Filtered out ${duplicatesCount} cross-document duplicates, keeping ${unique.length} unique questions`);
+  
+  return {
+    unique,
+    duplicates: duplicatesCount
+  };
+}
+
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -380,8 +453,19 @@ Your goal: Extract the MAXIMUM number of questions possible. When in doubt, extr
       const questionsWithAnswers = validQuestions.filter((q: any) => q.correct_answer >= 0 && q.correct_answer < 4);
       console.log(`After filtering unknown answers: ${questionsWithAnswers.length} questions with known answers`);
       
-      if (questionsWithAnswers.length > 0) {
-        const questionsToInsert = questionsWithAnswers.map((q: any) => {
+      // Filter out cross-document duplicates
+      const { unique: uniqueQuestions, duplicates: duplicatesCount } = await filterCrossDocumentDuplicates(
+        questionsWithAnswers,
+        documentId!,
+        supabase
+      );
+      
+      if (duplicatesCount > 0) {
+        console.log(`⚠️ Skipped ${duplicatesCount} cross-document duplicate questions`);
+      }
+      
+      if (uniqueQuestions.length > 0) {
+        const questionsToInsert = uniqueQuestions.map((q: any) => {
           const opts = q.options;
           const correctIdx = q.correct_answer;
           const letters = ['A', 'B', 'C', 'D'] as const;
@@ -408,7 +492,7 @@ Your goal: Extract the MAXIMUM number of questions possible. When in doubt, extr
           throw insertError;
         }
 
-        console.log(`Successfully inserted ${questionsWithAnswers.length} questions for module: ${doc.module}`);
+        console.log(`Successfully inserted ${uniqueQuestions.length} unique questions for module: ${doc.module}`);
       } else {
         console.log('No valid questions with known answers to insert');
       }
