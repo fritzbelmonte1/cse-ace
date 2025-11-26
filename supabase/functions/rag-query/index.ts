@@ -34,7 +34,7 @@ serve(async (req) => {
       .select(`
         id,
         document_id,
-        chunk_text,
+        content,
         chunk_index,
         documents!inner(file_name, module)
       `)
@@ -66,7 +66,7 @@ Here are ALL available document chunks (${allChunks.length} total):
 
 ${allChunks.map((c: any, idx: number) => `
 CHUNK ${idx + 1} (from ${c.documents.file_name}, module: ${c.documents.module}):
-${c.chunk_text.substring(0, 500)}...
+${c.content.substring(0, 500)}...
 `).join('\n---\n')}
 
 Task: Return ONLY the numbers (1-${allChunks.length}) of the TOP 5 most relevant chunks for answering the question.
@@ -143,7 +143,7 @@ If no chunks are relevant, return an empty array: []`;
     }
 
     // Use Gemini to ANSWER based on selected chunks
-    const context = selectedChunks.map((c: any) => c.chunk_text).join('\n\n');
+    const context = selectedChunks.map((c: any) => c.content).join('\n\n');
 
     const answerResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -195,7 +195,7 @@ If no chunks are relevant, return an empty array: []`;
 
     // Format sources
     const sources = selectedChunks.map((c: any) => ({
-      text: c.chunk_text.substring(0, 200) + '...',
+      text: c.content.substring(0, 200) + '...',
       document: c.documents.file_name,
       module: c.documents.module,
       similarity: 100
