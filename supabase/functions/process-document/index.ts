@@ -413,21 +413,78 @@ Your goal: Extract the MAXIMUM number of questions possible. When in doubt, extr
         console.log('No valid questions with known answers to insert');
       }
     } else if (doc.purpose === 'rag') {
-      // RAG processing - Store chunks WITHOUT embeddings
-      console.log('Starting RAG processing (Gemini-only, no embeddings)...');
+      // RAG processing - Semantic chunking with overlap
+      console.log('Starting RAG processing with semantic chunking...');
       const chunkSize = 1000;
+      const overlapSize = 200;
       const chunks: string[] = [];
 
-      for (let i = 0; i < fileContent.length; i += chunkSize) {
-        const rawChunk = fileContent.slice(i, i + chunkSize);
+      // Helper function to find the best split point (paragraph or sentence boundary)
+      const findBestSplitPoint = (text: string, targetIndex: number, searchWindow: number = 100): number => {
+        const start = Math.max(0, targetIndex - searchWindow);
+        const end = Math.min(text.length, targetIndex + searchWindow);
+        const searchText = text.slice(start, end);
+        
+        // Look for paragraph breaks first
+        const paragraphBreak = searchText.lastIndexOf('\n\n');
+        if (paragraphBreak !== -1 && paragraphBreak > searchWindow / 2) {
+          return start + paragraphBreak + 2;
+        }
+        
+        // Look for single line breaks
+        const lineBreak = searchText.lastIndexOf('\n');
+        if (lineBreak !== -1 && lineBreak > searchWindow / 3) {
+          return start + lineBreak + 1;
+        }
+        
+        // Look for sentence endings
+        const sentenceEndings = ['. ', '! ', '? ', '.\n', '!\n', '?\n'];
+        let bestSplit = -1;
+        let bestDistance = Infinity;
+        
+        for (const ending of sentenceEndings) {
+          const idx = searchText.lastIndexOf(ending);
+          if (idx !== -1) {
+            const distance = Math.abs(idx - searchWindow);
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              bestSplit = start + idx + ending.length;
+            }
+          }
+        }
+        
+        if (bestSplit !== -1) return bestSplit;
+        
+        // Fallback to space
+        const lastSpace = searchText.lastIndexOf(' ');
+        if (lastSpace !== -1) return start + lastSpace + 1;
+        
+        // Last resort: use target index
+        return targetIndex;
+      };
+
+      let position = 0;
+      while (position < fileContent.length) {
+        let endPosition = Math.min(position + chunkSize, fileContent.length);
+        
+        // If not at the end, find a good split point
+        if (endPosition < fileContent.length) {
+          endPosition = findBestSplitPoint(fileContent, endPosition);
+        }
+        
+        const rawChunk = fileContent.slice(position, endPosition);
         const sanitizedChunk = sanitizeText(rawChunk);
         
-        if (sanitizedChunk.length > 0) {
+        if (sanitizedChunk.trim().length > 50) { // Skip very small chunks
           chunks.push(sanitizedChunk);
         }
+        
+        // Move position forward, accounting for overlap
+        position = endPosition - overlapSize;
+        if (position >= fileContent.length) break;
       }
 
-      console.log(`Created ${chunks.length} chunks for document`);
+      console.log(`Created ${chunks.length} semantic chunks with ${overlapSize}char overlap`);
 
       // Insert chunks without embeddings with validation
       let successfulChunks = 0;
